@@ -51,26 +51,38 @@ npm install
 ## Usage
 
 ```bash
-npm start -- /home/eeliya/work/website-photo-motion
+npm start
 ```
 
-Then open the printed URL, by default <http://localhost:4477>. From WSL this also works in the
-Windows browser thanks to WSL localhost forwarding.
+Open <http://localhost:4477> (also works from the Windows browser via WSL localhost forwarding).
 
-Alternatively configure it via environment variables (copy `.env.sample` to `.env`):
+- **Pick the repo in the browser.** Click the repo name in the header (or “Choose repo…”) to open
+  the picker: recent repos, git repos found under `~/work` (two levels deep), or type any absolute
+  path (`~/…` works) and press Enter. Typing also filters the lists; Enter picks a single match.
+  The switch is live: the old watcher stops, the new repo's branch, file list and playback reset.
+- **Remembered.** The last used repo is watched again on the next `npm start`; recent repos are
+  kept in `~/.config/grok-coding-observatory/state.json`.
+- **Optional start path.** `npm start -- /path/to/project` watches that repo right away (and makes
+  it the last used one). With no argument and nothing remembered, the picker opens by itself.
 
-| Variable     | Default     | Description                                  |
-| ------------ | ----------- | -------------------------------------------- |
-| `TARGET_DIR` | –           | Project to watch (CLI argument wins)         |
-| `PORT`       | `4477`      | HTTP / WebSocket port                        |
-| `HOST`       | `127.0.0.1` | Interface to bind (`0.0.0.0` for LAN access) |
+Optional environment variables (copy `.env.sample` to `.env`):
+
+| Variable                 | Default                             | Description                                  |
+| ------------------------ | ----------------------------------- | -------------------------------------------- |
+| `TARGET_DIR`             | –                                   | Initial repo (CLI argument wins)             |
+| `PORT`                   | `4477`                              | HTTP / WebSocket port                        |
+| `HOST`                   | `127.0.0.1`                         | Interface to bind (`0.0.0.0` for LAN access) |
+| `REPOS_ROOT`             | `~/work`                            | Folder scanned for repos in the picker       |
+| `OBSERVATORY_CONFIG_DIR` | `~/.config/grok-coding-observatory` | Where recent / last-used repos are stored    |
 
 Leave the tab open while the assistant works; edits play back automatically.
 
 ## How it works
 
-- `src/server.ts` – Node HTTP server + `ws` WebSocket + `chokidar` watcher, run directly by Node
-  (no compile step). On each change it reads the file, diffs it line by line (`src/hunks.ts`, using
+- `src/server.ts` – Node HTTP server + `ws` WebSocket, run directly by Node (no compile step).
+  Owns the current watch session and switches it live (`POST /api/target`); `src/repos.ts`
+  validates paths, scans for repos and persists recent / last-used repos.
+- `src/session.ts` – one watched work tree: `chokidar` watcher, snapshots and HEAD tracking. On each change it reads the file, diffs it line by line (`src/hunks.ts`, using
   `diff`) against the last snapshot and broadcasts `{ type: "change", path, before, after, hunks }`.
   Changes are debounced per file (60 ms) and processed through one serial queue, so each event
   starts exactly where the previous one ended. `git status --porcelain` drives the sidebar.
@@ -78,8 +90,9 @@ Leave the tab open while the assistant works; edits play back automatically.
   animates them. `public/replay.js` holds the pure edit operations; the same code is exercised by
   the tests, and after each event the buffer is forced to match the file exactly.
 
-HTTP endpoints: `GET /api/files` (changed files), `GET /api/diff?path=<repo-relative path>`
-(HEAD vs working copy), WebSocket at `/ws`.
+HTTP endpoints: `GET /api/files` (current repo, HEAD, changed files), `GET /api/diff?path=<repo-relative path>`
+(HEAD vs working copy), `GET /api/repos` (recent + discovered repos), `POST /api/target`
+(`{"path": "..."}`, JSON only) to switch repos, WebSocket at `/ws`.
 
 ## Development
 

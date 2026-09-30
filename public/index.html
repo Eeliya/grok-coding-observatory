@@ -13,7 +13,9 @@
   <body>
     <header>
       <span class="logo"><span class="dot" id="dot"></span> Coding Observatory</span>
-      <span id="target" class="muted"></span>
+      <button id="repo" class="repo-btn" title="Choose the repository to watch">
+        <span id="repo-name">Choose repo…</span> <span class="caret">▾</span>
+      </button>
       <span id="branch" class="branch" hidden></span>
       <span class="spacer"></span>
       <span id="queue" class="muted"></span>
@@ -40,6 +42,29 @@
         <div id="diff" hidden></div>
       </section>
     </main>
+    <div id="picker" class="picker" hidden>
+      <div class="picker-panel" role="dialog" aria-label="Choose repository to watch">
+        <div class="picker-head">
+          <span>Watch a repository</span>
+          <button id="picker-close" class="icon" title="Close (Esc)">✕</button>
+        </div>
+        <form id="picker-form" autocomplete="off">
+          <input
+            id="picker-path"
+            spellcheck="false"
+            placeholder="Filter, or type an absolute path (~/… works)"
+          />
+          <button type="submit">Watch</button>
+        </form>
+        <div id="picker-error" class="picker-error" hidden></div>
+        <div class="picker-lists">
+          <div class="picker-section">Recent</div>
+          <ul id="picker-recent" class="picker-list"></ul>
+          <div class="picker-section" id="picker-found-title">Found</div>
+          <ul id="picker-found" class="picker-list"></ul>
+        </div>
+      </div>
+    </div>
     <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
     <script type="module" src="/app.js"></script>
   </body>

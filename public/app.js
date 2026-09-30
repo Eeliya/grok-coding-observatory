@@ -91,6 +91,7 @@ const state = {
   mode: 'live', // 'live' | 'diff'
   files: [],
   current: null,
+  target: null,
   gen: 0, // bumped on reset (branch switch / HEAD move) to abort stale playback
   speed: localStorage.getItem(SPEED_KEY) || 'fast',
 };
@@ -104,7 +105,7 @@ const isInstant = () => state.mode !== 'live' || cps() === Infinity;
 const pause = (ms) => (isInstant() ? 0 : sleep(ms * (160 / Math.max(cps(), 160)) ** 0.5));
 let highlightTimer;
 
-let monaco, editor, diffEditor;
+let monaco, editor, diffEditor, blankModel;
 let decorations = null;
 let caret = null;
 
@@ -240,9 +241,11 @@ function connect() {
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'hello') {
-      $('target').textContent = msg.target;
-      document.title = `Observatory — ${msg.target.split('/').pop()}`;
+      // Reconnected to a server that now watches another repo: reset like a switch.
+      if (state.target && msg.target !== state.target) switchedRepo({ ...msg, files: [] });
+      setTarget(msg.target);
       setHead(msg.head);
+      if (!msg.target) openPicker();
     } else if (msg.type === 'reset') {
       handleReset(msg);
     } else if (msg.type === 'files') {
@@ -276,6 +279,7 @@ function setHead(h) {
 
 /** Branch switch / HEAD move: drop queued playback and reload from disk, no typing. */
 async function handleReset(msg) {
+  if (msg.reason === 'repo') return switchedRepo(msg);
   state.gen++;
   state.queue = [];
   updateQueueLabel();
@@ -532,6 +536,164 @@ async function showDiff(p) {
   }
 }
 
+// ------------------------------------------------------------------ repo picker
+
+const baseName = (p) => p.replace(/\/+$/, '').split('/').pop() || p;
+
+function setTarget(target) {
+  state.target = target;
+  $('repo-name').textContent = target ? baseName(target) : 'Choose repo…';
+  $('repo').title = target
+    ? `${target} — click to watch another repository`
+    : 'Choose a repository';
+  document.title = target ? `Observatory — ${baseName(target)}` : 'Coding Observatory';
+  $('empty').textContent = target
+    ? 'No changes yet — waiting for edits…'
+    : 'No repository selected — click “Choose repo…” above.';
+}
+
+/** The server switched to another repository: drop everything from the old one. */
+function switchedRepo(msg) {
+  state.gen++;
+  state.queue = [];
+  updateQueueLabel();
+  setTarget(msg.target);
+  setHead(msg.head);
+  state.files = msg.files;
+  state.current = null;
+  renderFiles();
+  if (!editor) return;
+  if (state.mode === 'diff') backToLive();
+  setDecorations([]);
+  setCaret(null);
+  editor.setModel(blankModel);
+  for (const model of monaco.editor.getModels()) if (model.uri.scheme === 'file') model.dispose();
+  setNowPlaying(
+    `Now watching <b>${esc(baseName(msg.target))}</b> · ${esc(describeHead(msg.head))} <span class="muted">— waiting for edits…</span>`,
+  );
+  const el = $('repo');
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+}
+
+const picker = { data: null, busy: false };
+
+function openPicker() {
+  $('picker').hidden = false;
+  $('picker-error').hidden = true;
+  $('picker-path').value = '';
+  $('picker-path').focus();
+  renderPicker();
+  loadRepos();
+}
+
+function closePicker() {
+  $('picker').hidden = true;
+}
+
+async function loadRepos() {
+  try {
+    picker.data = await (await fetch('/api/repos')).json();
+  } catch {
+    picker.data = null;
+  }
+  renderPicker();
+}
+
+function pickerItem(repo, { current, missing }) {
+  const li = document.createElement('li');
+  li.dataset.path = repo.path;
+  if (current) li.classList.add('current');
+  if (missing) li.classList.add('missing');
+  const name = document.createElement('span');
+  name.className = 'repo-name';
+  name.textContent = repo.name;
+  const detail = document.createElement('span');
+  detail.className = 'repo-path';
+  detail.textContent = missing ? `${repo.path} (missing)` : repo.path;
+  li.append(name, detail);
+  if (repo.branch) {
+    const b = document.createElement('span');
+    b.className = 'repo-branch';
+    b.textContent = repo.branch;
+    li.append(b);
+  }
+  if (current) {
+    const c = document.createElement('span');
+    c.className = 'repo-current';
+    c.textContent = 'watching';
+    li.append(c);
+  }
+  if (!missing) li.addEventListener('click', () => chooseRepo(repo.path));
+  return li;
+}
+
+function renderPicker() {
+  const data = picker.data;
+  const q = $('picker-path').value.trim().toLowerCase();
+  const isPath = q.startsWith('/') || q.startsWith('~');
+  const match = (r) => !q || isPath || r.path.toLowerCase().includes(q);
+  const fill = (ul, repos, empty) => {
+    ul.textContent = '';
+    const shown = repos.filter(match);
+    for (const r of shown)
+      ul.append(pickerItem(r, { current: r.path === state.target, missing: r.exists === false }));
+    if (!shown.length) {
+      const li = document.createElement('li');
+      li.className = 'none';
+      li.textContent = data ? empty : 'Loading…';
+      ul.append(li);
+    }
+  };
+  fill($('picker-recent'), data?.recent ?? [], 'No recent repositories yet.');
+  fill($('picker-found'), data?.found ?? [], 'No git repositories found.');
+  $('picker-found-title').textContent = data ? `Found in ${data.scanRoot}` : 'Found';
+}
+
+async function chooseRepo(p) {
+  if (picker.busy) return;
+  picker.busy = true;
+  $('picker').classList.add('busy');
+  $('picker-error').hidden = true;
+  try {
+    const res = await fetch('/api/target', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: p }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    closePicker();
+  } catch (err) {
+    $('picker-error').textContent = err.message;
+    $('picker-error').hidden = false;
+  } finally {
+    picker.busy = false;
+    $('picker').classList.remove('busy');
+  }
+}
+
+function setupPicker() {
+  $('repo').addEventListener('click', openPicker);
+  $('picker-close').addEventListener('click', closePicker);
+  $('picker').addEventListener('mousedown', (e) => {
+    if (e.target === $('picker')) closePicker();
+  });
+  $('picker-path').addEventListener('input', renderPicker);
+  $('picker-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = $('picker-path').value.trim();
+    if (!v) return;
+    const isPath = v.startsWith('/') || v.startsWith('~');
+    const matches = [
+      ...document.querySelectorAll('#picker .picker-list li[data-path]:not(.missing)'),
+    ];
+    const unique = [...new Set(matches.map((li) => li.dataset.path))];
+    chooseRepo(!isPath && unique.length === 1 ? unique[0] : v);
+  });
+}
+
 function backToLive() {
   state.mode = 'live';
   $('live').hidden = true;
@@ -549,16 +711,21 @@ function backToLive() {
 
 setupSpeed();
 $('live').addEventListener('click', backToLive);
+setupPicker();
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && state.mode === 'diff') backToLive();
+  if (e.key !== 'Escape') return;
+  if (!$('picker').hidden) closePicker();
+  else if (state.mode === 'diff') backToLive();
 });
 
 require.config({ paths: { vs: `${MONACO_BASE}/vs` } });
 require(['vs/editor/editor.main'], () => {
   monaco = window.monaco;
+  // Explicit (not editor-owned) empty model, so it survives setModel() calls and
+  // can be shown again after switching repos.
+  blankModel = monaco.editor.createModel('', 'plaintext');
   editor = monaco.editor.create($('editor'), {
-    value: '',
-    language: 'plaintext',
+    model: blankModel,
     theme: 'vs-dark',
     readOnly: true,
     automaticLayout: true,

@@ -236,3 +236,150 @@ aside {
   vertical-align: text-bottom;
   background: var(--accent);
 }
+/* Repo button + picker */
+.repo-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 320px;
+  background: transparent;
+  border-color: #3c3c3c;
+  color: var(--text);
+}
+.repo-btn #repo-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-btn .caret {
+  color: var(--muted);
+  font-size: 10px;
+}
+.repo-btn.flash {
+  animation: flash 1.5s ease-out;
+}
+.picker {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 70px;
+}
+.picker.busy {
+  cursor: progress;
+}
+.picker-panel {
+  width: min(640px, calc(100% - 40px));
+  max-height: calc(100% - 110px);
+  display: flex;
+  flex-direction: column;
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+.picker-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px 6px;
+  font-weight: 600;
+}
+button.icon {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 2px 6px;
+}
+button.icon:hover {
+  color: var(--text);
+}
+#picker-form {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+#picker-path {
+  flex: 1;
+  background: #1e1e1e;
+  color: var(--text);
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font:
+    12px ui-monospace,
+    'Cascadia Code',
+    Consolas,
+    monospace;
+  outline: none;
+}
+#picker-path:focus {
+  border-color: var(--accent);
+}
+.picker-error {
+  margin: 0 12px 8px;
+  color: var(--deleted);
+}
+.picker-lists {
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+.picker-section {
+  padding: 8px 12px 4px;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.picker-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.picker-list li:hover {
+  background: #04395e;
+}
+.picker-list li.none {
+  color: var(--muted);
+  cursor: default;
+}
+.picker-list li.none:hover {
+  background: none;
+}
+.picker-list li.missing {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.picker-list .repo-name {
+  font-weight: 600;
+}
+.picker-list .repo-path {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.picker-list .repo-branch {
+  color: var(--accent);
+  font:
+    11px ui-monospace,
+    'Cascadia Code',
+    Consolas,
+    monospace;
+}
+.picker-list .repo-current {
+  color: var(--added);
+  font-size: 10px;
+}

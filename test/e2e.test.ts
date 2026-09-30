@@ -43,7 +43,13 @@ before(async () => {
   W('assets/notes.txt', 'n');
   W('build/pre.js', 'ignored'); // git-ignored => hidden
 
-  proc = spawn(process.execPath, [SERVER, repo], { env: { ...process.env, PORT: '0' } });
+  proc = spawn(process.execPath, [SERVER, repo], {
+    env: {
+      ...process.env,
+      PORT: '0',
+      OBSERVATORY_CONFIG_DIR: path.join(repo, '.git', 'observatory-config'),
+    },
+  });
   base = await new Promise<string>((resolve, reject) => {
     let out = '';
     proc.stdout!.on('data', (d) => {
