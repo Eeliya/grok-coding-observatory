@@ -7,10 +7,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
+import { createHash } from 'node:crypto';
 import { applyHunk, stringModel } from '../public/replay.js';
 import type { ChangeEvent } from '../src/server.ts';
 
 const SERVER = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'server.ts');
+const stripHash = (files: { hash?: string }[]) => files.map(({ hash: _h, ...f }) => f);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let repo: string;
 let proc: ChildProcess;
@@ -86,7 +88,9 @@ test('serves the page and static assets', async () => {
 
 test('initial file list contains the pre-dirty file', async () => {
   const api = await (await fetch(base + '/api/files')).json();
-  assert.deepEqual(api.files, [
+  const sha1 = (t: string) => createHash('sha1').update(t).digest('hex');
+  for (const f of api.files) assert.equal(f.hash, sha1(R(f.path)), `hash of ${f.path}`);
+  assert.deepEqual(stripHash(api.files), [
     { path: 'pre-dirty.txt', status: 'modified', category: 'changed' },
     { path: 'staged.js', status: 'added', category: 'changed' },
     { path: 'assets/img/logo.svg', status: 'untracked', category: 'untracked' },

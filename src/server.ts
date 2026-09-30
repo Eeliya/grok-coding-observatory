@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer } from 'ws';
-import { Session, describeHead, safeRel } from './session.ts';
+import { Session, describeHead, safeRel, type ChangeEvent, type HeadInfo } from './session.ts';
 import { REPOS_ROOT, loadState, rememberRepo, resolveRepo, scanRepos } from './repos.ts';
 
 export type { ChangeEvent, ChangedFile, HeadInfo } from './session.ts';
@@ -16,6 +16,75 @@ const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
 const PORT = process.env.PORT === undefined ? 4477 : Number(process.env.PORT);
 const HOST = process.env.HOST || '127.0.0.1';
 const MAX_BODY = 64 * 1024;
+/** Session timeline caps (in memory; cleared when switching repos). */
+const HISTORY_MAX_ITEMS = 500;
+const HISTORY_MAX_BYTES = 50 * 1024 * 1024;
+
+interface Marker {
+  type: 'marker';
+  id: number;
+  ts: number;
+  reason: 'branch' | 'head';
+  head: HeadInfo;
+}
+type HistoryItem = ChangeEvent | Marker;
+let history: HistoryItem[] = [];
+let historyBytes = 0;
+
+const itemBytes = (i: HistoryItem) =>
+  i.type === 'change' ? (i.before.length + i.after.length) * 2 + 512 : 256;
+
+function record(item: HistoryItem) {
+  history.push(item);
+  historyBytes += itemBytes(item);
+  while (history.length > HISTORY_MAX_ITEMS || historyBytes > HISTORY_MAX_BYTES) {
+    historyBytes -= itemBytes(history.shift()!);
+  }
+}
+
+function clearHistory() {
+  history = [];
+  historyBytes = 0;
+}
+
+/** Compact timeline entry (full before/after is fetched on demand). */
+function summarize(i: HistoryItem) {
+  if (i.type === 'marker') return i;
+  let plus = 0;
+  let minus = 0;
+  for (const h of i.hunks) {
+    plus += h.added.length;
+    minus += h.removed.length;
+  }
+  return {
+    type: 'edit',
+    id: i.id,
+    ts: i.ts,
+    path: i.path,
+    status: i.status,
+    instant: i.instant,
+    plus,
+    minus,
+  };
+}
+
+/** Messages from the active session: record edits, turn HEAD resets into timeline markers. */
+function onSessionMessage(message: object) {
+  let msg = message as { type: string; [k: string]: any };
+  if (msg.type === 'change') record(msg as ChangeEvent);
+  if (msg.type === 'reset' && (msg.reason === 'branch' || msg.reason === 'head')) {
+    const marker: Marker = {
+      type: 'marker',
+      id: ++eventId,
+      ts: Date.now(),
+      reason: msg.reason,
+      head: msg.head,
+    };
+    record(marker);
+    msg = { ...msg, marker };
+  }
+  broadcast(msg);
+}
 
 let session: Session | null = null;
 let eventId = 0;
@@ -25,7 +94,7 @@ let switchQueue: Promise<unknown> = Promise.resolve();
 function switchTo(input: string): Promise<Session> {
   const job = switchQueue.then(async () => {
     const ref = await resolveRepo(input);
-    const next = new Session({ ...ref, emit: broadcast, nextId: () => ++eventId });
+    const next = new Session({ ...ref, emit: onSessionMessage, nextId: () => ++eventId });
     await next.start(); // if this throws, the current session keeps running
     const old = session;
     session = next;
@@ -36,6 +105,7 @@ function switchTo(input: string): Promise<Session> {
     console.log(
       `Watching ${ref.target} · ${describeHead(next.head)} · ${next.files.length} changed file(s) vs HEAD`,
     );
+    clearHistory();
     broadcast({ type: 'reset', reason: 'repo', ...next.info() });
     return next;
   });
@@ -95,6 +165,15 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   try {
     if (url.pathname === '/api/files') return sendJson(res, 200, currentInfo());
+    if (url.pathname === '/api/history') {
+      return sendJson(res, 200, { target: session?.target ?? null, items: history.map(summarize) });
+    }
+    const hist = url.pathname.match(/^\/api\/history\/(\d+)$/);
+    if (hist) {
+      const item = history.find((i) => i.id === Number(hist[1]));
+      if (!item) return sendJson(res, 404, { error: 'not in history (expired or unknown id)' });
+      return sendJson(res, 200, item);
+    }
     if (url.pathname === '/api/repos') return sendJson(res, 200, await listRepos());
     if (url.pathname === '/api/target') {
       if (req.method !== 'POST') return sendJson(res, 405, { error: 'POST only' });
@@ -120,9 +199,14 @@ const server = http.createServer(async (req, res) => {
       if (!s) return sendJson(res, 409, { error: 'no repo selected' });
       const rel = safeRel(url.searchParams.get('path'));
       if (!rel) return sendJson(res, 400, { error: 'invalid path' });
-      const [head, current] = await Promise.all([s.readHead(rel), s.readWorking(rel)]);
+      const [head, current, currentHash] = await Promise.all([
+        s.readHead(rel),
+        s.readWorking(rel),
+        s.fileHash(rel),
+      ]);
       return sendJson(res, 200, {
         path: rel,
+        currentHash,
         binary: head.binary || current.binary,
         head: head.text,
         current: current.text,
@@ -158,6 +242,7 @@ wss.on('connection', (ws) => {
   const info = currentInfo();
   ws.send(JSON.stringify({ type: 'hello', target: info.target, root: info.root, head: info.head }));
   ws.send(JSON.stringify({ type: 'files', files: info.files }));
+  ws.send(JSON.stringify({ type: 'history', items: history.map(summarize) }));
 });
 
 // ---------------------------------------------------------------- startup

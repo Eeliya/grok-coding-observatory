@@ -2,12 +2,15 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { computeHunks, type Hunk } from './hunks.ts';
 import { instantReason } from '../public/playback-policy.js';
 import { git, gitBuffer, GIT_ENV, execFileP } from './git.ts';
 
 const MAX_FILE_BYTES = 1024 * 1024;
+/** Files above this are identified by size + mtime instead of a content hash. */
+const HASH_MAX_BYTES = 8 * 1024 * 1024;
 const DEBOUNCE_MS = 60;
 const HEAD_POLL_MS = 2000;
 const ALWAYS_IGNORED = new Set(['node_modules', '.git', 'dist']);
@@ -25,6 +28,8 @@ export interface ChangedFile {
   category: FileCategory;
   /** Epoch ms of the last live edit seen by this server (absent if not edited live). */
   editedAt?: number;
+  /** Content identity (sha1, or "m:size:mtime" for huge files, "deleted" if gone). */
+  hash?: string;
 }
 export interface HeadInfo {
   branch: string | null; // null when detached
@@ -41,6 +46,8 @@ export interface ChangeEvent {
   before: string;
   after: string;
   hunks: Hunk[];
+  /** Content identity of `after` (same scheme as ChangedFile.hash). */
+  hash: string;
   /** Set when the change should be shown instantly instead of typed. */
   instant: 'generated' | 'large' | 'binary' | null;
 }
@@ -190,6 +197,36 @@ export class Session {
     }
   }
 
+  private hashCache = new Map<string, { key: string; hash: string }>();
+
+  /** Content identity of the working-tree file (cached by size + mtime). */
+  async fileHash(rel: string): Promise<string> {
+    const abs = path.join(this.root, rel);
+    let st: fs.Stats;
+    try {
+      st = await fsp.stat(abs);
+    } catch {
+      return 'deleted';
+    }
+    if (!st.isFile()) return 'dir';
+    const key = `${st.size}:${st.mtimeMs}`;
+    const cached = this.hashCache.get(rel);
+    if (cached?.key === key) return cached.hash;
+    let hash: string;
+    if (st.size > HASH_MAX_BYTES) hash = `m:${key}`;
+    else {
+      try {
+        hash = createHash('sha1')
+          .update(await fsp.readFile(abs))
+          .digest('hex');
+      } catch {
+        return 'deleted';
+      }
+    }
+    this.hashCache.set(rel, { key, hash });
+    return hash;
+  }
+
   async readWorking(rel: string): Promise<Content> {
     try {
       return decode(await fsp.readFile(path.join(this.root, rel)));
@@ -284,6 +321,11 @@ export class Session {
         Number(a.category === 'untracked') - Number(b.category === 'untracked') ||
         a.path.localeCompare(b.path),
     );
+    await Promise.all(
+      files.map(async (f) => {
+        f.hash = await this.fileHash(f.path);
+      }),
+    );
     return files;
   }
 
@@ -349,6 +391,7 @@ export class Session {
       after: binary ? '' : after,
       hunks: binary ? [] : computeHunks(before, after),
       instant: null,
+      hash: await this.fileHash(rel),
     };
     event.instant = binary ? 'binary' : instantReason(rel, event.hunks);
     this.lastEdited.set(rel, event.ts);

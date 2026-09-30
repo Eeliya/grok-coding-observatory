@@ -151,7 +151,10 @@ test('switches repos live: reset broadcast, old watcher stopped, new one active'
   assert.equal(res.status, 200);
   reset = of('reset').at(-1)!;
   assert.equal(reset.target, repoB);
-  assert.deepEqual(reset.files, [{ path: 'b.scss', status: 'modified', category: 'changed' }]);
+  assert.deepEqual(
+    reset.files.map(({ hash: _h, ...f }: { hash?: string }) => f),
+    [{ path: 'b.scss', status: 'modified', category: 'changed' }],
+  );
   const info = await (await fetch(base + '/api/files')).json();
   assert.equal(info.target, repoB);
 
