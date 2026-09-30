@@ -1,0 +1,31 @@
+{
+  "name": "grok-coding-observatory",
+  "version": "0.1.0",
+  "description": "Watch an AI assistant edit a project, replayed live in the browser like a video.",
+  "private": true,
+  "type": "module",
+  "main": "src/server.ts",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.ts",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run typecheck && npm run format:check && npm test"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "chokidar": "^5.0.0",
+    "diff": "^9.0.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "@types/ws": "^8.18.2",
+    "prettier": "^3.9.9",
+    "typescript": "^5.9.3"
+  }
+}
