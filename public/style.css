@@ -1,0 +1,235 @@
+:root {
+  --bg: #1e1e1e;
+  --panel: #181818;
+  --border: #2b2b2b;
+  --text: #cccccc;
+  --muted: #858585;
+  --accent: #4fc1ff;
+  --added: #73c991;
+  --modified: #e2c08d;
+  --deleted: #f14c4c;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    13px/1.4 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  overflow: hidden;
+}
+header {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.logo {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--deleted);
+}
+.dot.on {
+  background: var(--added);
+  box-shadow: 0 0 6px var(--added);
+}
+.branch {
+  padding: 1px 8px;
+  border: 1px solid #3c3c3c;
+  border-radius: 10px;
+  color: var(--accent);
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.branch.detached {
+  color: var(--modified);
+}
+.branch.flash {
+  animation: flash 1.5s ease-out;
+}
+@keyframes flash {
+  from {
+    background: #264f78;
+  }
+}
+.spacer {
+  flex: 1;
+}
+.muted {
+  color: var(--muted);
+}
+select,
+button {
+  background: #2d2d2d;
+  color: var(--text);
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+button:hover {
+  border-color: var(--accent);
+}
+main {
+  display: flex;
+  height: calc(100% - 40px);
+}
+aside {
+  width: 280px;
+  min-width: 200px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+#files ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+#files li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#files li:hover {
+  background: #2a2d2e;
+}
+#files li.recent .name {
+  color: #e6e6e6;
+  font-weight: 600;
+}
+#files li.fresh {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+#files .edited {
+  color: var(--accent);
+  font-size: 10px;
+}
+#files li:not(.fresh) .edited {
+  opacity: 0.55;
+}
+#files li.active {
+  background: #04395e;
+}
+#files li.pulse {
+  animation: pulse 1.2s ease-out;
+}
+@keyframes pulse {
+  from {
+    background: #264f78;
+  }
+}
+#files .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+  flex: 1;
+}
+#files .badge {
+  width: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+.st-modified .badge,
+.st-renamed .badge {
+  color: var(--modified);
+}
+.st-added .badge,
+.st-untracked .badge {
+  color: var(--added);
+}
+.st-deleted .badge {
+  color: var(--deleted);
+}
+.st-deleted .name {
+  text-decoration: line-through;
+}
+.group-title {
+  padding: 10px 12px 4px;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  user-select: none;
+}
+.group-title.collapsible {
+  cursor: pointer;
+}
+.group-title.collapsible:hover {
+  color: var(--text);
+}
+.group-edited {
+  color: var(--accent);
+  text-transform: none;
+}
+.empty {
+  padding: 8px 12px;
+}
+#stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+#nowplaying {
+  height: 28px;
+  line-height: 28px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#nowplaying b {
+  color: var(--text);
+}
+#editor,
+#diff {
+  flex: 1;
+  min-height: 0;
+}
+[hidden] {
+  display: none !important;
+}
+/* Monaco decorations */
+.line-removed {
+  background: rgba(241, 76, 76, 0.28);
+}
+.line-added {
+  background: rgba(115, 201, 145, 0.16);
+}
+.gutter-added {
+  border-left: 3px solid var(--added);
+}
+.typing-caret::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: -1px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+}

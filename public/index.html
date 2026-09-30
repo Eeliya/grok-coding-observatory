@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Coding Observatory</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%234fc1ff'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <span class="logo"><span class="dot" id="dot"></span> Coding Observatory</span>
+      <span id="target" class="muted"></span>
+      <span id="branch" class="branch" hidden></span>
+      <span class="spacer"></span>
+      <span id="queue" class="muted"></span>
+      <label class="speed">
+        Speed
+        <select id="speed">
+          <option value="slow">Slow</option>
+          <option value="normal">Normal</option>
+          <option value="fast">Fast</option>
+          <option value="turbo">Turbo</option>
+          <option value="instant">Instant</option>
+        </select>
+      </label>
+      <button id="live" hidden>● Back to live</button>
+    </header>
+    <main>
+      <aside>
+        <div id="files"></div>
+        <div id="empty" class="muted empty">No changes yet — waiting for edits…</div>
+      </aside>
+      <section id="stage">
+        <div id="nowplaying" class="muted">Waiting for the assistant to edit something…</div>
+        <div id="editor"></div>
+        <div id="diff" hidden></div>
+      </section>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
