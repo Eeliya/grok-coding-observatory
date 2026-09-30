@@ -29,10 +29,14 @@
           <option value="instant">Instant</option>
         </select>
       </label>
-      <button id="live" hidden>● Back to live</button>
+      <button id="live" hidden title="Back to live playback (Esc)">● Live</button>
     </header>
     <main>
       <aside>
+        <div id="unseen-bar" class="unseen-bar" hidden>
+          <span class="unseen-dot"></span><span id="unseen-count"></span>
+          <button id="mark-seen" title="Mark every changed file as seen">Mark all seen</button>
+        </div>
         <div id="files"></div>
         <div id="empty" class="muted empty">No changes yet — waiting for edits…</div>
       </aside>
@@ -40,6 +44,15 @@
         <div id="nowplaying" class="muted">Waiting for the assistant to edit something…</div>
         <div id="editor"></div>
         <div id="diff" hidden></div>
+        <div id="timeline" class="timeline">
+          <div class="tl-controls">
+            <button id="prev" class="icon" title="Previous edit (←)">‹</button>
+            <button id="pause" class="icon" title="Pause live playback (Space)">❚❚</button>
+            <button id="next" class="icon" title="Next edit (→)">›</button>
+            <span id="timeline-count" class="muted">0 edits</span>
+          </div>
+          <div id="timeline-items" class="tl-items"></div>
+        </div>
       </section>
     </main>
     <div id="picker" class="picker" hidden>

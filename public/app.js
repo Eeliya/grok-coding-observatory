@@ -88,21 +88,45 @@ const $ = (id) => document.getElementById(id);
 const state = {
   queue: [],
   playing: false,
-  mode: 'live', // 'live' | 'diff'
+  mode: 'live', // 'live' | 'diff' | 'history'
   files: [],
   current: null,
   target: null,
   gen: 0, // bumped on reset (branch switch / HEAD move) to abort stale playback
+  token: 0, // bumped whenever the editor changes owner (live / diff / history view)
+  paused: false,
+  stepOnce: false, // play exactly one queued edit while paused
+  stepping: false, // that single edit is playing now
+  timeline: [], // session edits + HEAD markers (summaries), oldest first
+  playedIds: new Set(), // edits already played live (or from before this page load)
+  playingId: null, // edit currently animating live
+  cursor: null, // timeline index shown in history mode
   speed: localStorage.getItem(SPEED_KEY) || 'fast',
 };
 if (!(state.speed in SPEEDS)) state.speed = 'fast';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Chars/second right now: the chosen speed, fast-forwarded when the queue backs up.
-const cps = () => effectiveCps(SPEEDS[state.speed], state.queue.length);
-const isInstant = () => state.mode !== 'live' || cps() === Infinity;
+// (History replays ignore the backlog.)
+const cps = () =>
+  state.mode === 'live'
+    ? effectiveCps(SPEEDS[state.speed], state.queue.length)
+    : SPEEDS[state.speed];
+const isInstant = () => cps() === Infinity;
+// While paused, live playback freezes in place until resumed (or interrupted).
+const frozen = () => state.paused && !state.stepping && state.mode === 'live';
+async function hold(valid) {
+  while (frozen() && valid()) await sleep(50);
+}
 // Pauses scale with speed so "turbo" feels snappy and "slow" is easy to follow.
-const pause = (ms) => (isInstant() ? 0 : sleep(ms * (160 / Math.max(cps(), 160)) ** 0.5));
+async function pause(ms, valid = () => true) {
+  await hold(valid);
+  if (!isInstant()) await sleep(ms * (160 / Math.max(cps(), 160)) ** 0.5);
+}
+const TIMELINE_MAX = 500;
+const SEEN_PREFIX = 'observatory.seen:';
+const SEEN_CONTENT_MAX = 200_000; // chars of last-seen content kept for "since last look"
+let seen = null; // { files: { [path]: { h, t, c? } } } for the current repo
 let highlightTimer;
 
 let monaco, editor, diffEditor, blankModel;
@@ -122,8 +146,13 @@ function setupSpeed() {
 
 function updateQueueLabel() {
   const n = state.queue.length;
-  $('queue').textContent = n ? `${n} queued` : '';
-  $('live').textContent = n ? `● Back to live (${n} queued)` : '● Back to live';
+  const q = $('queue');
+  q.textContent = state.paused ? `❚❚ Paused · ${n} waiting` : n ? `${n} queued` : '';
+  q.classList.toggle('paused', state.paused);
+  $('live').textContent = n ? `● Live (${n} queued)` : '● Live';
+  $('pause').textContent = state.paused ? '▶' : '❚❚';
+  $('pause').title = state.paused ? 'Resume live playback (Space)' : 'Pause live playback (Space)';
+  $('pause').classList.toggle('on', state.paused);
 }
 
 const BADGES = { modified: 'M', added: 'A', untracked: 'U', deleted: 'D', renamed: 'R' };
@@ -151,6 +180,10 @@ function fileItem(f) {
   name.textContent = f.path;
   li.append(badge, name);
   li.title = `${f.path} (${f.status})`;
+  if (isUnseen(f)) {
+    li.classList.add('unseen');
+    li.title += ' — changed since you last looked';
+  }
   if (f.editedAt) {
     li.classList.add('recent');
     if (Date.now() - f.editedAt < FRESH_MS) li.classList.add('fresh');
@@ -207,6 +240,9 @@ function renderFiles() {
     );
   }
   $('empty').hidden = state.files.length > 0;
+  const unseen = state.files.filter(isUnseen).length;
+  $('unseen-bar').hidden = unseen === 0;
+  $('unseen-count').textContent = `${unseen} unseen`;
 }
 setInterval(() => state.files.some((f) => f.editedAt) && renderFiles(), 15_000);
 
@@ -250,10 +286,16 @@ function connect() {
       handleReset(msg);
     } else if (msg.type === 'files') {
       state.files = msg.files;
+      syncSeen();
       renderFiles();
+    } else if (msg.type === 'history') {
+      state.timeline = msg.items;
+      state.playedIds = new Set(msg.items.map((i) => i.id)); // from before this page load
+      renderTimeline();
     } else if (msg.type === 'change') {
       msg.gen = state.gen;
       state.queue.push(msg);
+      addToTimeline(summarize(msg));
       updateQueueLabel();
       pump();
     }
@@ -281,12 +323,16 @@ function setHead(h) {
 async function handleReset(msg) {
   if (msg.reason === 'repo') return switchedRepo(msg);
   state.gen++;
+  state.token++;
   state.queue = [];
+  if (msg.marker) addToTimeline(msg.marker);
   updateQueueLabel();
   setHead(msg.head);
   state.files = msg.files;
+  syncSeen();
   renderFiles();
   if (!editor) return;
+  if (state.mode === 'history') setMode('live');
   setDecorations([]);
   setCaret(null);
   const label =
@@ -314,17 +360,36 @@ async function handleReset(msg) {
 // ------------------------------------------------------------------ playback
 
 async function pump() {
-  if (state.playing || state.mode !== 'live') return;
+  if (state.playing) return;
   state.playing = true;
   try {
-    while (state.queue.length && state.mode === 'live') {
+    while (state.queue.length && state.mode === 'live' && (!state.paused || state.stepOnce)) {
+      state.stepping = state.stepOnce;
+      state.stepOnce = false;
       const ev = state.queue.shift();
       updateQueueLabel();
+      const token = state.token;
+      const valid = () => token === state.token && ev.gen === state.gen;
+      state.playingId = ev.id;
+      renderTimeline();
+      let done = false;
       try {
-        await play(ev);
+        done = await play(ev, valid);
       } catch (err) {
         console.error('Playback failed', err);
+        done = true; // don't retry a broken event forever
       }
+      state.playingId = null;
+      state.stepping = false;
+      if (done) {
+        state.playedIds.add(ev.id);
+        markSeen(ev.path, ev.hash, ev.binary ? null : ev.after);
+      } else if (ev.gen === state.gen) {
+        // Interrupted by the diff/history view: play it again when back to live.
+        state.queue.unshift(ev);
+        updateQueueLabel();
+      }
+      renderTimeline();
     }
   } finally {
     state.playing = false;
@@ -369,8 +434,12 @@ function setCaret(line, col) {
   );
 }
 
-async function play(ev) {
-  if (ev.gen !== state.gen) return;
+/**
+ * Animate one edit in the editor. `valid()` turns false when the editor is taken
+ * over (diff/history view, reset); returns true only if the edit played to the end.
+ */
+async function play(ev, valid, { label } = {}) {
+  if (!valid()) return false;
   const before = ev.before ?? '';
   const after = ev.after ?? '';
   const model = modelFor(ev.path, before);
@@ -380,15 +449,17 @@ async function play(ev) {
   setDecorations([]);
   markActive(ev.path, true);
   const verb =
-    { created: 'Creating', deleted: 'Deleting', modified: 'Editing' }[ev.status] || 'Editing';
+    label ??
+    ({ created: 'Creating', deleted: 'Deleting', modified: 'Editing' }[ev.status] || 'Editing');
+  const when = new Date(ev.ts).toLocaleTimeString();
   setNowPlaying(
-    `${verb} <b>${esc(ev.path)}</b> · ${ev.hunks.length} hunk${ev.hunks.length === 1 ? '' : 's'} · ${new Date(ev.ts).toLocaleTimeString()}`,
+    `${verb} <b>${esc(ev.path)}</b> · ${ev.hunks.length} hunk${ev.hunks.length === 1 ? '' : 's'} · ${when}`,
   );
 
   if (ev.binary) {
-    setNowPlaying(`<b>${esc(ev.path)}</b> changed (binary or too large to show)`);
-    await pause(600);
-    return;
+    setNowPlaying(`${verb} <b>${esc(ev.path)}</b> · changed (binary or too large to show)`);
+    await pause(600, valid);
+    return valid();
   }
 
   const queued = state.queue.length;
@@ -401,6 +472,8 @@ async function play(ev) {
           ? `catching up (${queued} queued) — shown instantly`
           : null;
   if (ev.instant || isInstant()) {
+    await hold(valid);
+    if (!valid()) return false;
     model.setValue(after);
     const first = ev.hunks[0];
     if (first) editor.revealLineInCenter(Math.min(first.line, model.getLineCount()));
@@ -410,7 +483,7 @@ async function play(ev) {
     setDecorations(changed);
     if (instantNote) {
       setNowPlaying(
-        `${verb} <b>${esc(ev.path)}</b> · <span class="note">${esc(instantNote)}</span> · ${new Date(ev.ts).toLocaleTimeString()}`,
+        `${verb} <b>${esc(ev.path)}</b> · <span class="note">${esc(instantNote)}</span> · ${when}`,
       );
       // Brief highlight of the changed region for big changes.
       clearTimeout(highlightTimer);
@@ -419,8 +492,8 @@ async function play(ev) {
       }, 2500);
     }
     // Short dwell so the viewer can see what changed, shorter while catching up.
-    if (state.mode === 'live') await sleep(state.queue.length ? 120 : 400);
-    return;
+    await sleep(state.queue.length ? 120 : 400);
+    return valid();
   }
   if (cps() > SPEEDS[state.speed]) {
     setNowPlaying(
@@ -429,21 +502,23 @@ async function play(ev) {
   }
 
   const added = [];
-  const live = () => ev.gen === state.gen;
   for (const h of ev.hunks) {
-    if (!live()) return; // reset while playing: abandon this event
-    await playHunk(model, h, live);
+    await hold(valid);
+    if (!valid()) return false; // editor taken over: abandon this run
+    await playHunk(model, h, valid);
+    if (!valid()) return false;
     if (h.added.length) {
       added.push(lineDeco(h.line, h.line + h.added.length - 1, 'line-added'));
       setDecorations(added);
     }
-    await pause(250);
+    await pause(250, valid);
   }
+  if (!valid()) return false;
   setCaret(null);
-  if (!live()) return;
   // Safety net: guarantee the final buffer is byte-identical to the file.
   if (model.getValue() !== after) model.setValue(after);
-  await pause(500);
+  await pause(500, valid);
+  return valid();
 }
 
 /** Wrap a Monaco model in the EditModel interface used by replay.js. */
@@ -462,7 +537,8 @@ async function playHunk(model, h, live) {
   editor.revealLineInCenterIfOutsideViewport(Math.min(L, model.getLineCount()));
   if (r > 0) {
     setDecorations([lineDeco(L, L + r - 1, 'line-removed')]);
-    await pause(Math.min(200 + r * 40, 900));
+    await pause(Math.min(200 + r * 40, 900), live);
+    if (!live()) return;
     setDecorations([]);
   }
   if (!live()) return;
@@ -477,7 +553,11 @@ async function typeText(m, startLine, text, live) {
   let last = performance.now();
   let carry = 0;
   while (i < text.length) {
-    if (!live()) break;
+    if (frozen()) {
+      await hold(live);
+      last = performance.now();
+    }
+    if (!live()) return;
     if (isInstant()) {
       insertAt(m, pos, text.slice(i));
       break;
@@ -500,19 +580,28 @@ async function typeText(m, startLine, text, live) {
 
 // ------------------------------------------------------------------ diff view
 
-async function showDiff(p) {
-  state.mode = 'diff';
-  $('live').hidden = false;
-  updateQueueLabel();
+async function showDiff(p, base = null) {
+  setMode('diff');
+  const token = state.token;
   markActive(p);
-  setNowPlaying(
-    `Diff vs HEAD · <b>${esc(p)}</b> <span class="muted">(live playback paused)</span>`,
-  );
+  setNowPlaying(`Diff · <b>${esc(p)}</b> <span class="muted">(live playback paused)</span>`);
   const res = await fetch(`/api/diff?path=${encodeURIComponent(p)}`);
   const data = await res.json();
-  if (state.mode !== 'diff' || state.current !== p) return;
-  $('editor').hidden = true;
-  $('diff').hidden = false;
+  if (token !== state.token || state.current !== p) return;
+  // Snapshot of what was seen before this look (opening the diff marks it seen).
+  const prev = base && diffSeen.path === p ? diffSeen.prev : seen?.files[p];
+  diffSeen = { path: p, prev };
+  const canSince = !data.binary && prev?.c != null && prev.h !== data.currentHash;
+  if (base !== 'seen' || !canSince) base = 'head';
+  markSeen(p, data.currentHash, data.binary ? null : data.current);
+  const btn = (b, text) =>
+    `<button class="seg${base === b ? ' on' : ''}" data-base="${b}"${b === 'seen' && !canSince ? ' disabled title="No snapshot of an earlier look"' : ''}>${text}</button>`;
+  setNowPlaying(
+    `Diff · <b>${esc(p)}</b> ${btn('head', 'vs HEAD')}${btn('seen', 'since last look')} <span class="muted">— Esc for live</span>`,
+  );
+  for (const b of $('nowplaying').querySelectorAll('button.seg:not([disabled])')) {
+    b.addEventListener('click', () => showDiff(p, b.dataset.base));
+  }
   if (!diffEditor) {
     diffEditor = monaco.editor.createDiffEditor($('diff'), {
       theme: 'vs-dark',
@@ -521,13 +610,14 @@ async function showDiff(p) {
       renderSideBySide: true,
       originalEditable: false,
       scrollBeyondLastLine: false,
+      fontSize: 12,
     });
   }
   const old = diffEditor.getModel();
   const lang = languageFor(p);
   const text = (t) => (data.binary ? '(binary or too large to show)' : (t ?? ''));
   diffEditor.setModel({
-    original: monaco.editor.createModel(text(data.head), lang),
+    original: monaco.editor.createModel(base === 'seen' ? prev.c : text(data.head), lang),
     modified: monaco.editor.createModel(text(data.current), lang),
   });
   if (old) {
@@ -535,12 +625,14 @@ async function showDiff(p) {
     old.modified.dispose();
   }
 }
+let diffSeen = { path: null, prev: null };
 
 // ------------------------------------------------------------------ repo picker
 
 const baseName = (p) => p.replace(/\/+$/, '').split('/').pop() || p;
 
 function setTarget(target) {
+  if (target !== state.target) loadSeen(target);
   state.target = target;
   $('repo-name').textContent = target ? baseName(target) : 'Choose repo…';
   $('repo').title = target
@@ -555,15 +647,21 @@ function setTarget(target) {
 /** The server switched to another repository: drop everything from the old one. */
 function switchedRepo(msg) {
   state.gen++;
+  state.token++;
   state.queue = [];
+  state.timeline = [];
+  state.playedIds = new Set();
+  state.cursor = null;
   updateQueueLabel();
+  renderTimeline();
   setTarget(msg.target);
   setHead(msg.head);
   state.files = msg.files;
   state.current = null;
+  syncSeen();
   renderFiles();
   if (!editor) return;
-  if (state.mode === 'diff') backToLive();
+  if (state.mode !== 'live') setMode('live');
   setDecorations([]);
   setCaret(null);
   editor.setModel(blankModel);
@@ -694,29 +792,265 @@ function setupPicker() {
   });
 }
 
+/** Switch between live playback, the diff view and the timeline (history) view. */
+function setMode(mode) {
+  state.mode = mode;
+  state.token++; // interrupts whatever currently animates in the editor
+  if (mode !== 'history') state.cursor = null;
+  $('live').hidden = mode === 'live';
+  $('diff').hidden = mode !== 'diff';
+  $('editor').hidden = mode === 'diff';
+  if (mode !== 'diff') editor?.layout();
+  updateQueueLabel();
+  renderTimeline();
+}
+
 function backToLive() {
-  state.mode = 'live';
-  $('live').hidden = true;
-  $('diff').hidden = true;
-  $('editor').hidden = false;
-  editor.layout();
+  setMode('live');
   // Highlight the file actually shown in the editor, not the one opened in the diff view.
   const shown = editor.getModel();
   markActive(shown && shown.uri.scheme === 'file' ? shown.uri.path.slice(1) : null);
-  setNowPlaying(state.queue.length ? 'Resuming…' : 'Waiting for the assistant to edit something…');
+  setNowPlaying(
+    state.paused
+      ? `❚❚ Paused — ${state.queue.length} waiting · Space to resume, → to step`
+      : state.queue.length
+        ? 'Resuming…'
+        : 'Waiting for the assistant to edit something…',
+  );
   pump();
+}
+
+// ------------------------------------------------------------------ timeline
+
+function summarize(ev) {
+  let plus = 0;
+  let minus = 0;
+  for (const h of ev.hunks) {
+    plus += h.added.length;
+    minus += h.removed.length;
+  }
+  return {
+    type: 'edit',
+    id: ev.id,
+    ts: ev.ts,
+    path: ev.path,
+    status: ev.status,
+    instant: ev.instant,
+    plus,
+    minus,
+  };
+}
+
+function addToTimeline(item) {
+  state.timeline.push(item);
+  if (state.timeline.length > TIMELINE_MAX) {
+    const drop = state.timeline.length - TIMELINE_MAX;
+    state.timeline.splice(0, drop);
+    if (state.cursor != null) state.cursor = Math.max(0, state.cursor - drop);
+  }
+  renderTimeline();
+}
+
+const hhmmss = (ts) => new Date(ts).toLocaleTimeString([], { hour12: false });
+
+function renderTimeline() {
+  const strip = $('timeline-items');
+  if (!strip) return;
+  strip.textContent = '';
+  state.timeline.forEach((item, index) => {
+    const el = document.createElement('div');
+    el.dataset.index = String(index);
+    if (item.type === 'marker') {
+      el.className = 'tl-marker';
+      el.textContent =
+        item.reason === 'branch'
+          ? `⎇ ${item.head.branch ?? item.head.sha}`
+          : `● ${item.head.sha ?? ''}`;
+      el.title = `${item.reason === 'branch' ? 'Switched to' : 'HEAD moved to'} ${describeHead(item.head)} at ${hhmmss(item.ts)}`;
+    } else {
+      el.className = 'tl-edit';
+      el.dataset.id = String(item.id);
+      if (!state.playedIds.has(item.id)) el.classList.add('pending');
+      if (item.id === state.playingId) el.classList.add('playing');
+      if (state.mode === 'history' && index === state.cursor) el.classList.add('selected');
+      const name = document.createElement('span');
+      name.className = 'tl-name';
+      name.textContent = baseName(item.path);
+      const meta = document.createElement('span');
+      meta.className = 'tl-meta';
+      meta.innerHTML = `${hhmmss(item.ts)} <span class="plus">+${item.plus}</span><span class="minus">−${item.minus}</span>`;
+      el.append(name, meta);
+      el.title = `${item.path} · ${item.status} · ${hhmmss(item.ts)} · +${item.plus} −${item.minus}${item.instant ? ` · ${item.instant}` : ''}`;
+      el.addEventListener('click', () => viewEdit(index));
+    }
+    strip.append(el);
+  });
+  $('timeline-count').textContent =
+    `${state.timeline.filter((i) => i.type === 'edit').length} edits`;
+  const focus =
+    strip.querySelector('.selected') ?? strip.querySelector('.playing') ?? strip.lastElementChild;
+  focus?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+/** Show exactly one past edit (its before → after) in the editor. */
+async function viewEdit(index) {
+  const item = state.timeline[index];
+  if (!item || item.type !== 'edit' || !editor) return;
+  setMode('history');
+  state.cursor = index;
+  renderTimeline();
+  const token = state.token;
+  const res = await fetch(`/api/history/${item.id}`);
+  if (token !== state.token) return;
+  if (!res.ok) {
+    setNowPlaying(`Edit <b>${esc(item.path)}</b> is no longer in the server history`);
+    return;
+  }
+  const ev = await res.json();
+  const n = state.timeline.slice(0, index + 1).filter((i) => i.type === 'edit').length;
+  await play(ev, () => token === state.token, { label: `Replaying edit ${n} ·` });
+}
+
+const editIndices = () =>
+  state.timeline.map((t, i) => (t.type === 'edit' ? i : -1)).filter((i) => i >= 0);
+
+/** ←/→: step through the timeline; while paused in live mode, → plays the next queued edit. */
+function step(dir) {
+  if (state.mode === 'live' && dir > 0) {
+    if (state.paused && state.queue.length && !state.playing) {
+      state.stepOnce = true;
+      pump();
+    }
+    return;
+  }
+  const idx = editIndices();
+  if (!idx.length) return;
+  let k;
+  if (state.mode === 'history' && state.cursor != null) {
+    k = idx.indexOf(state.cursor) + dir;
+  } else {
+    // From live/diff: ← shows the edit playing now, else the last one played.
+    const cur = state.timeline.findIndex((t) => t.id === state.playingId);
+    const played = idx.filter((i) => state.playedIds.has(state.timeline[i].id));
+    k = idx.indexOf(cur >= 0 ? cur : (played.at(-1) ?? idx.at(-1)));
+    if (dir > 0) k += 1;
+  }
+  if (k >= 0 && k < idx.length) viewEdit(idx[k]);
+}
+
+function togglePause() {
+  state.paused = !state.paused;
+  updateQueueLabel();
+  if (state.mode === 'live') {
+    if (state.paused && !state.playing) {
+      setNowPlaying(`❚❚ Paused — new edits wait in the queue · Space to resume, → to step`);
+    }
+    if (!state.paused) pump();
+  }
+}
+
+// ------------------------------------------------------------------ seen tracking
+
+function loadSeen(target) {
+  seen = null;
+  if (!target) return;
+  try {
+    const raw = localStorage.getItem(SEEN_PREFIX + target);
+    seen = raw ? JSON.parse(raw) : null;
+  } catch {
+    seen = null;
+  }
+}
+
+function saveSeen() {
+  if (!state.target || !seen) return;
+  const key = SEEN_PREFIX + state.target;
+  try {
+    localStorage.setItem(key, JSON.stringify(seen));
+  } catch {
+    // Quota: keep hashes, drop the stored snapshots.
+    for (const f of Object.values(seen.files)) delete f.c;
+    try {
+      localStorage.setItem(key, JSON.stringify(seen));
+    } catch {
+      /* give up silently */
+    }
+  }
+}
+
+/** First visit to a repo: everything currently changed counts as seen (baseline). */
+function syncSeen() {
+  if (!state.target) return;
+  if (!seen) {
+    seen = { files: {} };
+    for (const f of state.files) if (f.hash) seen.files[f.path] = { h: f.hash, t: Date.now() };
+  } else {
+    // Forget files that are no longer changed (a later change counts as new).
+    const live = new Set(state.files.map((f) => f.path));
+    for (const p of Object.keys(seen.files)) if (!live.has(p)) delete seen.files[p];
+  }
+  saveSeen();
+}
+
+function isUnseen(f) {
+  return !!(seen && f.hash && seen.files[f.path]?.h !== f.hash);
+}
+
+function markSeen(path, hash, content) {
+  if (!state.target || !hash) return;
+  seen ??= { files: {} };
+  const entry = { h: hash, t: Date.now() };
+  if (typeof content === 'string' && content.length <= SEEN_CONTENT_MAX) entry.c = content;
+  seen.files[path] = entry;
+  saveSeen();
+  renderFiles();
+}
+
+function markAllSeen() {
+  seen ??= { files: {} };
+  for (const f of state.files) {
+    if (!f.hash) continue;
+    const prev = seen.files[f.path];
+    seen.files[f.path] = prev?.h === f.hash ? prev : { h: f.hash, t: Date.now() };
+  }
+  saveSeen();
+  renderFiles();
 }
 
 // ------------------------------------------------------------------ boot
 
 setupSpeed();
 $('live').addEventListener('click', backToLive);
+$('pause').addEventListener('click', togglePause);
+$('prev').addEventListener('click', () => step(-1));
+$('next').addEventListener('click', () => step(1));
+$('mark-seen').addEventListener('click', markAllSeen);
 setupPicker();
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  if (!$('picker').hidden) closePicker();
-  else if (state.mode === 'diff') backToLive();
-});
+// Capture phase, so the (read-only) editor can't swallow the shortcuts.
+window.addEventListener(
+  'keydown',
+  (e) => {
+    const t = e.target;
+    const typing =
+      t instanceof HTMLInputElement ||
+      t instanceof HTMLTextAreaElement ||
+      t instanceof HTMLSelectElement;
+    if (e.key === 'Escape') {
+      if (!$('picker').hidden) closePicker();
+      else if (state.mode !== 'live') backToLive();
+      else if (state.paused) togglePause();
+      return;
+    }
+    if (typing || !$('picker').hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === ' ') togglePause();
+    else if (e.key === 'ArrowLeft') step(-1);
+    else if (e.key === 'ArrowRight') step(1);
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  },
+  true,
+);
 
 require.config({ paths: { vs: `${MONACO_BASE}/vs` } });
 require(['vs/editor/editor.main'], () => {

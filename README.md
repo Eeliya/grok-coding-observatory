@@ -18,7 +18,22 @@ character by character.
   get a blue ● marker (with a left accent bar for the first minute), and edited untracked files
   stay visible even when the Untracked group is collapsed. Updated live.
 - **Diff vs HEAD** – click a file to open a side-by-side Monaco diff against `HEAD`. Live playback
-  pauses (events keep queuing); press **Back to live** or `Esc` to resume.
+  pauses (events keep queuing); press **● Live** or `Esc` to resume.
+- **Session timeline** – a strip along the bottom lists every edit seen this session, in order,
+  with file name, time and `+added −removed` lines (queued edits are dashed, the playing one is
+  underlined). Commits / `HEAD` moves (`● <sha>`) and branch switches (`⎇ <branch>`) add a marker
+  instead of wiping it; switching repos clears it. Click an edit to replay exactly that change
+  (its before → after) in the editor; **● Live** returns to live playback. The history is kept on
+  the server (in memory, last 500 edits / ~50 MB of content), so a page refresh doesn't lose it.
+- **Pause and step** – **❚❚** pauses live playback: new edits queue up (header shows
+  “Paused · N waiting”) and the timeline marks them pending. **‹ / ›** step through the timeline
+  one edit at a time; while paused in live mode, **›** plays exactly the next queued edit.
+- **What changed since I last looked** – the browser remembers, per repo (`localStorage` key
+  `observatory.seen:<repo path>`), the content hash of each changed file you have seen. A file
+  counts as seen when its playback finished or you opened its diff. Files with unseen changes get
+  an orange dot, and a bar at the top of the sidebar shows the count with **Mark all seen**. The
+  diff view has a **since last look** toggle that diffs the file against the content you last saw
+  (snapshots up to 200 KB are kept; the first visit to a repo takes the current state as seen).
 - **Branch awareness** – the header shows the watched project's branch and short `HEAD` sha
   (or `detached · <sha>`). A checkout, commit, reset or any other `HEAD` move is treated as a
   reset: baselines and the file list are rebuilt from the new `HEAD` and nothing is replayed as
@@ -77,6 +92,14 @@ Optional environment variables (copy `.env.sample` to `.env`):
 
 Leave the tab open while the assistant works; edits play back automatically.
 
+Keyboard shortcuts (ignored while typing in an input):
+
+| Key     | Action                                                                        |
+| ------- | ----------------------------------------------------------------------------- |
+| `Space` | Pause / resume live playback                                                  |
+| `←`/`→` | Previous / next edit in the timeline (`→` while paused plays the next queued) |
+| `Esc`   | Close the picker → leave diff / timeline view back to live → resume if paused |
+
 ## How it works
 
 - `src/server.ts` – Node HTTP server + `ws` WebSocket, run directly by Node (no compile step).
@@ -91,7 +114,8 @@ Leave the tab open while the assistant works; edits play back automatically.
   the tests, and after each event the buffer is forced to match the file exactly.
 
 HTTP endpoints: `GET /api/files` (current repo, HEAD, changed files), `GET /api/diff?path=<repo-relative path>`
-(HEAD vs working copy), `GET /api/repos` (recent + discovered repos), `POST /api/target`
+(HEAD vs working copy, plus `currentHash`), `GET /api/history` (session timeline summaries),
+`GET /api/history/<id>` (one full recorded edit: before, after, hunks), `GET /api/repos` (recent + discovered repos), `POST /api/target`
 (`{"path": "..."}`, JSON only) to switch repos, WebSocket at `/ws`.
 
 ## Development

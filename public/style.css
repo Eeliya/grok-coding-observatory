@@ -8,6 +8,7 @@
   --added: #73c991;
   --modified: #e2c08d;
   --deleted: #f14c4c;
+  --unseen: #f0a030;
 }
 * {
   box-sizing: border-box;
@@ -382,4 +383,169 @@ button.icon:hover {
 .picker-list .repo-current {
   color: var(--added);
   font-size: 10px;
+}
+/* Unseen changes */
+.unseen-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--unseen);
+}
+.unseen-bar button {
+  margin-left: auto;
+  padding: 1px 6px;
+  font-size: 10px;
+}
+.unseen-dot,
+#files li.unseen::after {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--unseen);
+}
+#files li.unseen .name {
+  color: #f0f0f0;
+}
+/* Paused state + diff base toggle */
+#queue.paused {
+  color: var(--unseen);
+  font-weight: 600;
+}
+button.icon.on {
+  color: var(--unseen);
+}
+#nowplaying button.seg {
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 16px;
+  border-radius: 0;
+  margin-left: -1px;
+}
+#nowplaying button.seg:first-of-type {
+  border-radius: 3px 0 0 3px;
+  margin-left: 6px;
+}
+#nowplaying button.seg:last-of-type {
+  border-radius: 0 3px 3px 0;
+}
+#nowplaying button.seg.on {
+  background: #04395e;
+  border-color: var(--accent);
+}
+#nowplaying button.seg[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+/* Session timeline */
+.timeline {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: 42px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+.tl-controls {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px 0 6px;
+  border-right: 1px solid var(--border);
+  font-size: 10px;
+}
+.tl-controls #timeline-count {
+  margin-left: 4px;
+  min-width: 44px;
+}
+.tl-items {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.tl-edit {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 150px;
+  height: 32px;
+  padding: 0 7px;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  background: #252526;
+  cursor: pointer;
+  line-height: 1.25;
+}
+.tl-edit:hover {
+  border-color: var(--accent);
+}
+.tl-edit .tl-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.tl-edit .tl-meta {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tl-meta .plus {
+  color: var(--added);
+  margin-left: 4px;
+}
+.tl-meta .minus {
+  color: var(--deleted);
+  margin-left: 3px;
+}
+.tl-edit.pending {
+  border-style: dashed;
+  opacity: 0.6;
+}
+.tl-edit.playing {
+  border-color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  opacity: 1;
+}
+.tl-edit.selected {
+  background: #04395e;
+  border-color: var(--accent);
+}
+.tl-marker {
+  flex: none;
+  align-self: center;
+  padding: 1px 6px;
+  border-left: 2px solid var(--accent);
+  color: var(--accent);
+  font:
+    10px ui-monospace,
+    'Cascadia Code',
+    Consolas,
+    monospace;
+  white-space: nowrap;
+}
+.tl-controls button.icon {
+  min-width: 20px;
+  font-size: 14px;
+  line-height: 1;
+}
+#pause {
+  font-size: 9px;
+  letter-spacing: -1px;
 }
