@@ -1,5 +1,6 @@
 /* Coding Observatory front end — vanilla JS (ES module) + Monaco from CDN. */
 import { insertAt, nextChunkEnd, prepareHunk } from './replay.js';
+import { changeSize, effectiveCps } from './playback-policy.js';
 
 const MONACO_BASE = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min';
 
@@ -96,10 +97,12 @@ const state = {
 if (!(state.speed in SPEEDS)) state.speed = 'fast';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const isInstant = () => state.speed === 'instant' || state.mode !== 'live';
+// Chars/second right now: the chosen speed, fast-forwarded when the queue backs up.
+const cps = () => effectiveCps(SPEEDS[state.speed], state.queue.length);
+const isInstant = () => state.mode !== 'live' || cps() === Infinity;
 // Pauses scale with speed so "turbo" feels snappy and "slow" is easy to follow.
-const pause = (ms) =>
-  isInstant() ? 0 : sleep(ms * (160 / Math.max(SPEEDS[state.speed], 160)) ** 0.5);
+const pause = (ms) => (isInstant() ? 0 : sleep(ms * (160 / Math.max(cps(), 160)) ** 0.5));
+let highlightTimer;
 
 let monaco, editor, diffEditor;
 let decorations = null;
@@ -369,6 +372,7 @@ async function play(ev) {
   const model = modelFor(ev.path, before);
   if (editor.getModel() !== model) editor.setModel(model);
   if (model.getValue() !== before) model.setValue(before);
+  clearTimeout(highlightTimer);
   setDecorations([]);
   markActive(ev.path, true);
   const verb =
@@ -383,16 +387,41 @@ async function play(ev) {
     return;
   }
 
-  if (isInstant()) {
+  const queued = state.queue.length;
+  const instantNote =
+    ev.instant === 'generated'
+      ? 'generated file — shown instantly'
+      : ev.instant === 'large'
+        ? `large change (${changeSize(ev.hunks).lines} lines) — shown instantly`
+        : state.mode === 'live' && state.speed !== 'instant' && isInstant()
+          ? `catching up (${queued} queued) — shown instantly`
+          : null;
+  if (ev.instant || isInstant()) {
     model.setValue(after);
-    setDecorations(
-      ev.hunks
-        .filter((h) => h.added.length)
-        .map((h) => lineDeco(h.line, h.line + h.added.length - 1, 'line-added')),
-    );
-    if (ev.hunks[0]) editor.revealLineInCenter(ev.hunks[0].line);
-    await sleep(state.mode === 'live' ? 250 : 0);
+    const first = ev.hunks[0];
+    if (first) editor.revealLineInCenter(Math.min(first.line, model.getLineCount()));
+    const changed = ev.hunks
+      .filter((h) => h.added.length)
+      .map((h) => lineDeco(h.line, h.line + h.added.length - 1, 'line-added'));
+    setDecorations(changed);
+    if (instantNote) {
+      setNowPlaying(
+        `${verb} <b>${esc(ev.path)}</b> · <span class="note">${esc(instantNote)}</span> · ${new Date(ev.ts).toLocaleTimeString()}`,
+      );
+      // Brief highlight of the changed region for big changes.
+      clearTimeout(highlightTimer);
+      highlightTimer = setTimeout(() => {
+        if (editor.getModel() === model) setDecorations([]);
+      }, 2500);
+    }
+    // Short dwell so the viewer can see what changed, shorter while catching up.
+    if (state.mode === 'live') await sleep(state.queue.length ? 120 : 400);
     return;
+  }
+  if (cps() > SPEEDS[state.speed]) {
+    setNowPlaying(
+      `${$('nowplaying').innerHTML} · <span class="note">catching up ×${Math.round(cps() / SPEEDS[state.speed])}</span>`,
+    );
   }
 
   const added = [];
@@ -451,7 +480,7 @@ async function typeText(m, startLine, text, live) {
     }
     // Elapsed-time based so background-tab timer throttling just types bigger chunks.
     const now = performance.now();
-    carry += ((now - last) / 1000) * SPEEDS[state.speed];
+    carry += ((now - last) / 1000) * cps();
     last = now;
     const n = Math.max(1, Math.floor(carry));
     carry = Math.max(0, carry - n);

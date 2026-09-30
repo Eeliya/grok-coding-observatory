@@ -10,6 +10,7 @@ import type { AddressInfo } from 'node:net';
 import chokidar from 'chokidar';
 import { WebSocketServer } from 'ws';
 import { computeHunks, type Hunk } from './hunks.ts';
+import { instantReason } from '../public/playback-policy.js';
 
 const execFileP = promisify(execFile);
 // Never take optional locks (e.g. `git status` refreshing the index), so the
@@ -52,6 +53,8 @@ export interface ChangeEvent {
   before: string;
   after: string;
   hunks: Hunk[];
+  /** Set when the change should be shown instantly instead of typed. */
+  instant: 'generated' | 'large' | 'binary' | null;
 }
 
 const targetArg = process.argv[2] || process.env.TARGET_DIR;
@@ -282,12 +285,14 @@ async function processFile(rel: string) {
     before: binary ? '' : before,
     after: binary ? '' : after,
     hunks: binary ? [] : computeHunks(before, after),
+    instant: null,
   };
+  event.instant = binary ? 'binary' : instantReason(rel, event.hunks);
   lastEdited.set(rel, event.ts);
   scheduleFilesRefresh();
   const n = event.hunks.length;
   console.log(
-    `[${new Date().toLocaleTimeString()}] #${event.id} ${event.status} ${rel} (${n} hunk${n === 1 ? '' : 's'})`,
+    `[${new Date().toLocaleTimeString()}] #${event.id} ${event.status} ${rel} (${n} hunk${n === 1 ? '' : 's'}${event.instant ? `, instant: ${event.instant}` : ''})`,
   );
   broadcast(event);
 }

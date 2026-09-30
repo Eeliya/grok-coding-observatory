@@ -203,6 +203,9 @@ aside {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+#nowplaying .note {
+  color: var(--modified);
+}
 #nowplaying b {
   color: var(--text);
 }

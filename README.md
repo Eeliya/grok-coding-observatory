@@ -24,6 +24,12 @@ character by character.
   reset: baselines and the file list are rebuilt from the new `HEAD` and nothing is replayed as
   typing (queued playback is dropped). Detected by a cheap 2 s poll plus a check before every
   replayed change; file events are held while git holds `index.lock`/`HEAD.lock`.
+- **Big changes play instantly** – lock/generated files (`package-lock.json`, `yarn.lock`,
+  `pnpm-lock.yaml`, `composer.lock`, `*.min.js`, `*.map`, …) and any single change larger than
+  80 changed lines or 4000 changed characters are shown at once: final content, scrolled to the
+  first change, briefly highlighted, with a "shown instantly" note. When playback falls behind it
+  fast-forwards: 4× faster from 3 queued events, instant from 8. All thresholds live in
+  `public/playback-policy.js`.
 - **Speed control** – Slow / Normal / Fast (default) / Turbo / Instant, remembered in
   `localStorage`.
 - Syntax highlighting chosen by file extension, dark theme, minimal UI.

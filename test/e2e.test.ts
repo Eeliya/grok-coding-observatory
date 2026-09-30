@@ -165,3 +165,18 @@ test('diff endpoint returns HEAD vs working copy', async () => {
   assert.equal(d.current, R('a.js'));
   assert.equal((await fetch(base + '/api/diff?path=../../etc/passwd')).status, 400);
 });
+
+test('lock files and large edits are tagged instant; normal edits are not', async () => {
+  const from = events.length;
+  W('package-lock.json', '{\n  "lockfileVersion": 3\n}\n');
+  await sleep(200);
+  W(
+    'big.js',
+    Array.from({ length: 200 }, (_, i) => `export const v${i} = ${i};`).join('\n') + '\n',
+  );
+  await sleep(200);
+  W('small.js', 'export const s = 1;\n');
+  await sleep(800);
+  const tags = Object.fromEntries(events.slice(from).map((e) => [e.path, e.instant]));
+  assert.deepEqual(tags, { 'package-lock.json': 'generated', 'big.js': 'large', 'small.js': null });
+});
