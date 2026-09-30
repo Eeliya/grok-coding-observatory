@@ -43,6 +43,7 @@ Open **<http://localhost:4477>**. The last repo you watched is remembered for th
 | **Timeline**     | The bottom bar lists this session's uncommitted edits with time and +/− lines. Click one to replay exactly that edit. Commit and branch-switch markers are clickable too. Kept on the server, so a refresh keeps it.                                                    |
 | **Pause / step** | Pause live playback (new edits wait, with a count), then step through edits one at a time with ‹ / ›.                                                                                                                                                                   |
 | **Commits**      | The header shows the mode: **Live**, or the sha, subject and `HEAD~n` of a commit. « / » walk the current branch's history (first-parent); a commit plays back file by file with **Play / Stop**, or click a file for its diff. » on the newest commit returns to live. |
+| **Agent status** | Optional chip in the header per agent that reports via [docs/AGENT-PROTOCOL.md](docs/AGENT-PROTOCOL.md): working (pulsing dot + message), done (✓ summary · age), possibly stalled, idle. Also prefixes the tab title (⏳ / ✓ / ⚠); click it for recent activity.       |
 | **Controls**     | Header: repo picker (recent repos, repos found under `~/work`, or any path), A− / A+ code font size (8–20 px), and playback speed (Slow … Instant). All remembered.                                                                                                     |
 
 ![Commit view: the header shows the commit with a Stop button while its files replay, with the progress bar at 2/2 files](docs/commit-view.png)
@@ -65,10 +66,20 @@ Shortcuts are ignored while you type in an input.
    `npm start -- ~/work/my-project`).
 3. Keep the tab open beside the chat. Each edit replays as it lands; when you come back, the dots
    and the timeline show what changed while you were away, and « walks through the commits it made.
+4. Optional: let the agent report whether it is **busy or done** (also while it only runs lint,
+   tests or git). Tell it:
+
+   > Follow docs/AGENT-PROTOCOL.md in grok-coding-observatory to report your status.
+
+   It then writes a small JSON file into the repo's git dir (never committed), and the header shows
+   a chip per agent: a pulsing dot with what it is doing, ✓ **Done · summary · 2m ago**, or
+   **possibly stalled** if it stops refreshing. See **[docs/AGENT-PROTOCOL.md](docs/AGENT-PROTOCOL.md)**
+   for the path, schema, and bash / PowerShell / Node one-liners.
 
 It is local-only: the server binds to `127.0.0.1`, reads your repo via git and the file system, and
 never sends your code anywhere (the page only fetches Monaco and the icon font from a CDN). It never
-writes to the repo and never takes git locks.
+writes to your work tree and never takes git locks; the only thing it creates is the agent status
+folder `.git/observatory/status/` inside the git dir.
 
 ## Configuration
 
@@ -106,14 +117,15 @@ npm run format  # prettier --write .
 
 How it's built: `src/server.ts` (HTTP + WebSocket, repo switching), `src/session.ts` (chokidar
 watcher, per-file snapshots, HEAD tracking, line diffs via `src/hunks.ts`), `src/commits.ts`
-(read-only branch history), `src/repos.ts` (repo validation, recent repos); `public/` is a single
+(read-only branch history), `src/repos.ts` (repo validation, recent repos), `src/status.ts` (agent
+status files) and `bin/status.mjs` (status CLI); `public/` is a single
 static page (vanilla JS modules + Monaco) with the replay logic in `public/replay.js` and the
 instant-playback thresholds in `public/playback-policy.js`.
 
 ## Reference
 
 The HTTP and WebSocket API (used by the page, handy for scripting) is described in
-[docs/API.md](docs/API.md).
+[docs/API.md](docs/API.md); the agent status protocol in [docs/AGENT-PROTOCOL.md](docs/AGENT-PROTOCOL.md).
 
 ## License
 

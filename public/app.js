@@ -366,6 +366,10 @@ function connect() {
       state.timeline = msg.items;
       state.playedIds = new Set(msg.items.map((i) => i.id)); // from before this page load
       renderTimeline();
+    } else if (msg.type === 'status') {
+      setAgentStatus(msg);
+    } else if (msg.type === 'marker') {
+      addToTimeline(msg.marker);
     } else if (msg.type === 'change') {
       msg.gen = state.gen;
       state.queue.push(msg);
@@ -739,7 +743,8 @@ function setTarget(target) {
   $('repo').title = target
     ? `${target} — click to watch another repository`
     : 'Choose a repository';
-  document.title = target ? `Observatory — ${baseName(target)}` : 'Coding Observatory';
+  baseTitle = target ? `Observatory — ${baseName(target)}` : 'Coding Observatory';
+  renderAgentStatus();
   $('empty').textContent = target
     ? 'No changes yet — waiting for edits…'
     : 'No repository selected — click “Choose repo…” above.';
@@ -972,7 +977,13 @@ function renderTimeline() {
   state.timeline.forEach((item, index) => {
     const el = document.createElement('div');
     el.dataset.index = String(index);
-    if (item.type === 'marker') {
+    if (item.type === 'marker' && item.reason === 'agent') {
+      el.className = `tl-marker tl-agent ${item.state}`;
+      const ic =
+        { working: 'loader', done: 'circle-check', idle: 'circle' }[item.state] ?? 'circle';
+      el.innerHTML = `${icon(ic)} ${esc(item.state === 'working' ? item.message || 'working' : [item.state, item.message].filter(Boolean).join(' · '))}`;
+      el.title = `${item.agent}: ${item.state}${item.message ? ` — ${item.message}` : ''} at ${hhmmss(item.ts)}`;
+    } else if (item.type === 'marker') {
       el.className = 'tl-marker';
       const sha = item.head?.sha;
       if (sha) {
@@ -1463,6 +1474,7 @@ $('mark-seen').addEventListener('click', markAllSeen);
 $('commit-prev').addEventListener('click', () => commitStep(-1));
 $('commit-next').addEventListener('click', () => commitStep(1));
 $('cb-play').addEventListener('click', toggleCommitPlay);
+setupAgentStatus();
 setupPicker();
 // Capture phase, so the (read-only) editor can't swallow the shortcuts.
 window.addEventListener(
@@ -1474,7 +1486,8 @@ window.addEventListener(
       t instanceof HTMLTextAreaElement ||
       t instanceof HTMLSelectElement;
     if (e.key === 'Escape') {
-      if (!$('picker').hidden) closePicker();
+      if (!$('as-pop').hidden) toggleStatusPop(false);
+      else if (!$('picker').hidden) closePicker();
       else if (state.mode !== 'live') backToLive();
       else if (state.paused) togglePause();
       return;
@@ -1491,6 +1504,121 @@ window.addEventListener(
   },
   true,
 );
+
+// ------------------------------------------------------------------ agent status
+// Agents report working/done/idle via files in the repo's git dir (docs/AGENT-PROTOCOL.md).
+
+let baseTitle = document.title;
+const agentStatus = { agents: [], problems: [], log: [], offset: 0 };
+
+function fmtAgo(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 10) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+/** Display state of one agent, with staleness judged against the server clock. */
+function agentView(a) {
+  const now = Date.now() + agentStatus.offset;
+  const age = now - a.ts;
+  const stale = a.state === 'working' && age > a.ttl * 1000;
+  return { ...a, stale, ago: fmtAgo(age), view: stale ? 'stale' : a.state, old: age > 3600e3 };
+}
+
+function agentLabel(v, withName) {
+  const who = withName ? `<b>${esc(v.agent)}</b> ` : '';
+  const msg = v.message ? ` · ${esc(v.message)}` : '';
+  if (v.view === 'working')
+    return `<span class="as-pulse"></span>${who}${esc(v.message || 'Working…')}`;
+  if (v.view === 'stale')
+    return `${icon('triangle-alert')}${who}Possibly stalled${msg} · last seen ${v.ago}`;
+  if (v.view === 'done') return `${icon('circle-check')}${who}Done${msg} · ${v.ago}`;
+  return `<span class="as-idle"></span>${who}Idle`;
+}
+
+function setAgentStatus(msg) {
+  agentStatus.agents = msg.agents ?? [];
+  agentStatus.problems = msg.problems ?? [];
+  agentStatus.log = msg.log ?? [];
+  agentStatus.offset = (msg.serverTime ?? Date.now()) - Date.now();
+  renderAgentStatus();
+}
+
+function renderAgentStatus() {
+  const box = $('agent-status');
+  const views = agentStatus.agents.map(agentView);
+  // Most urgent first: working, stalled, done, idle.
+  const rank = { working: 0, stale: 1, done: 2, idle: 3 };
+  views.sort((a, b) => rank[a.view] - rank[b.view] || b.ts - a.ts);
+  box.hidden = !views.length && !agentStatus.problems.length;
+  const multi = views.length > 1 || views.some((v) => v.agent !== 'agent');
+  const shown = views.slice(0, 3);
+  const chip = $('as-chip');
+  chip.innerHTML =
+    shown
+      .map(
+        (v) =>
+          `<span class="as-seg ${v.view}${v.old && v.view !== 'working' ? ' old' : ''}" data-agent="${esc(v.agent)}">${agentLabel(v, multi)}</span>`,
+      )
+      .join('') +
+    (views.length > 3 ? `<span class="as-more">+${views.length - 3}</span>` : '') +
+    (agentStatus.problems.length
+      ? `<span class="as-problem" title="A status file could not be read">${icon('file-warning')}</span>`
+      : '');
+  chip.title = views.length
+    ? views
+        .map(
+          (v) =>
+            `${v.agent}: ${v.view === 'stale' ? 'possibly stalled' : v.view}${v.message ? ` — ${v.message}` : ''} (${v.ago})`,
+        )
+        .join('\n') + '\nClick for recent activity'
+    : 'Agent status problems — click for details';
+  const top = views[0]?.view;
+  const prefix = { working: '⏳ ', stale: '⚠ ', done: '✓ ' }[top] ?? '';
+  document.title = prefix + baseTitle;
+  if (!$('as-pop').hidden) renderStatusPop(views);
+}
+
+function renderStatusPop(views = agentStatus.agents.map(agentView)) {
+  const agents = views
+    .map((v) => `<li class="as-seg ${v.view}">${agentLabel(v, true)}</li>`)
+    .join('');
+  const log = agentStatus.log
+    .slice(-12)
+    .reverse()
+    .map((e) => {
+      const ic = { working: 'loader', done: 'circle-check', idle: 'circle' }[e.state] ?? 'circle';
+      return `<li><span class="as-time">${hhmmss(e.ts)}</span>${icon(ic, `as-l-${e.state}`)}<b>${esc(e.agent)}</b> ${esc(e.message || e.state)}</li>`;
+    })
+    .join('');
+  const problems = agentStatus.problems
+    .map((p) => `<li class="as-bad">${icon('file-warning')}${esc(p.file)}: ${esc(p.error)}</li>`)
+    .join('');
+  $('as-pop').innerHTML =
+    `<div class="as-h">Agents</div><ul>${agents || '<li class="muted">No status reported</li>'}</ul>` +
+    (problems ? `<div class="as-h">Problems</div><ul>${problems}</ul>` : '') +
+    `<div class="as-h">Recent activity</div><ul class="as-log">${log || '<li class="muted">No changes since the server started</li>'}</ul>`;
+}
+
+function toggleStatusPop(open = $('as-pop').hidden) {
+  $('as-pop').hidden = !open;
+  $('as-chip').setAttribute('aria-expanded', String(open));
+  if (open) renderStatusPop();
+}
+
+function setupAgentStatus() {
+  $('as-chip').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleStatusPop();
+  });
+  document.addEventListener('click', (e) => {
+    if (!$('as-pop').hidden && !$('agent-status').contains(e.target)) toggleStatusPop(false);
+  });
+  setInterval(renderAgentStatus, 15000); // ages and staleness move on without new messages
+}
 
 require.config({ paths: { vs: `${MONACO_BASE}/vs` } });
 require(['vs/editor/editor.main'], () => {

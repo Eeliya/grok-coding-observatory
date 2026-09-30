@@ -9,6 +9,13 @@ import type { AddressInfo } from 'node:net';
 import { WebSocketServer } from 'ws';
 import { Session, describeHead, safeRel, type ChangeEvent, type HeadInfo } from './session.ts';
 import { commitDetail, commitFileEvent, listCommits, resolveCommit } from './commits.ts';
+import {
+  StatusWatcher,
+  isLoopback,
+  statusDir,
+  writeStatus,
+  type StatusLogEntry,
+} from './status.ts';
 import { REPOS_ROOT, loadState, rememberRepo, resolveRepo, scanRepos } from './repos.ts';
 
 export type { ChangeEvent, ChangedFile, HeadInfo } from './session.ts';
@@ -25,8 +32,12 @@ interface Marker {
   type: 'marker';
   id: number;
   ts: number;
-  reason: 'branch' | 'head';
-  head: HeadInfo;
+  reason: 'branch' | 'head' | 'agent';
+  head?: HeadInfo;
+  /** For agent markers: who changed state, and to what. */
+  agent?: string;
+  state?: string;
+  message?: string;
 }
 type HistoryItem = ChangeEvent | Marker;
 let history: HistoryItem[] = [];
@@ -88,6 +99,47 @@ function onSessionMessage(message: object) {
 }
 
 let session: Session | null = null;
+let statusWatcher: StatusWatcher | null = null;
+
+const emptyStatus = () => ({
+  dir: null,
+  serverTime: Date.now(),
+  agents: [],
+  problems: [],
+  log: [],
+});
+const statusSnapshot = () => statusWatcher?.snapshot() ?? emptyStatus();
+
+/** Agent status files changed: timeline markers for state transitions, then tell clients. */
+function onStatusChange(w: StatusWatcher, transitions: StatusLogEntry[]) {
+  if (w !== statusWatcher) return;
+  for (const t of transitions) {
+    const marker: Marker = {
+      type: 'marker',
+      id: ++eventId,
+      ts: Date.now(),
+      reason: 'agent',
+      agent: t.agent,
+      state: t.state,
+      message: t.message,
+    };
+    record(marker);
+    broadcast({ type: 'marker', marker });
+  }
+  broadcast({ type: 'status', ...w.snapshot() });
+}
+
+/** Status is optional: a failure here never blocks watching the repo. */
+async function startStatusWatcher(target: string): Promise<StatusWatcher | null> {
+  try {
+    const w = new StatusWatcher(await statusDir(target), onStatusChange);
+    await w.start();
+    return w;
+  } catch (err) {
+    console.warn('Agent status disabled:', (err as Error).message);
+    return null;
+  }
+}
 let eventId = 0;
 let switchQueue: Promise<unknown> = Promise.resolve();
 
@@ -97,8 +149,11 @@ function switchTo(input: string): Promise<Session> {
     const ref = await resolveRepo(input);
     const next = new Session({ ...ref, emit: onSessionMessage, nextId: () => ++eventId });
     await next.start(); // if this throws, the current session keeps running
+    const nextStatus = await startStatusWatcher(ref.target);
     const old = session;
     session = next;
+    statusWatcher?.close();
+    statusWatcher = nextStatus;
     await old?.close();
     await rememberRepo(ref.target).catch((err) =>
       console.warn('Could not save recent repos:', (err as Error).message),
@@ -108,6 +163,7 @@ function switchTo(input: string): Promise<Session> {
     );
     clearHistory();
     broadcast({ type: 'reset', reason: 'repo', ...next.info() });
+    broadcast({ type: 'status', ...statusSnapshot() });
     return next;
   });
   switchQueue = job.catch(() => {});
@@ -209,6 +265,31 @@ const server = http.createServer(async (req, res) => {
       if (!ev) return sendJson(res, 404, { error: 'file not changed in this commit' });
       return sendJson(res, 200, ev);
     }
+    if (url.pathname === '/api/status') {
+      if (req.method === 'GET') return sendJson(res, 200, statusSnapshot());
+      if (req.method !== 'POST') return sendJson(res, 405, { error: 'GET or POST only' });
+      if (!isLoopback(req.socket.remoteAddress)) {
+        return sendJson(res, 403, { error: 'status updates are accepted from localhost only' });
+      }
+      if (!String(req.headers['content-type']).startsWith('application/json')) {
+        return sendJson(res, 415, { error: 'Expected application/json' });
+      }
+      const w = statusWatcher;
+      if (!w) return sendJson(res, 409, { error: 'no repo selected' });
+      let body;
+      try {
+        body = await readJson(req);
+      } catch (err) {
+        return sendJson(res, 400, { error: (err as Error).message });
+      }
+      try {
+        const status = await writeStatus(w.dir, body);
+        await w.rescan();
+        return sendJson(res, 200, { ok: true, status });
+      } catch (err) {
+        return sendJson(res, 400, { error: (err as Error).message });
+      }
+    }
     if (url.pathname === '/api/repos') return sendJson(res, 200, await listRepos());
     if (url.pathname === '/api/target') {
       if (req.method !== 'POST') return sendJson(res, 405, { error: 'POST only' });
@@ -278,6 +359,7 @@ wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'hello', target: info.target, root: info.root, head: info.head }));
   ws.send(JSON.stringify({ type: 'files', files: info.files }));
   ws.send(JSON.stringify({ type: 'history', items: history.map(summarize) }));
+  ws.send(JSON.stringify({ type: 'status', ...statusSnapshot() }));
 });
 
 // ---------------------------------------------------------------- startup
@@ -315,6 +397,7 @@ server.listen(PORT, HOST, () => {
 });
 
 function shutdown() {
+  statusWatcher?.close();
   void session?.close();
   wss.close();
   server.close(() => process.exit(0));

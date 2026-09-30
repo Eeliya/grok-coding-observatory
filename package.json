@@ -5,6 +5,9 @@
   "private": true,
   "type": "module",
   "main": "src/server.ts",
+  "bin": {
+    "grok-observatory": "bin/status.mjs"
+  },
   "scripts": {
     "prestart": "node scripts/check-node.cjs",
     "start": "node --env-file-if-exists=.env src/server.ts",
@@ -12,7 +15,8 @@
     "typecheck": "tsc",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run typecheck && npm run format:check && npm test"
+    "check": "npm run typecheck && npm run format:check && npm test",
+    "status": "node bin/status.mjs"
   },
   "engines": {
     "node": ">=22.18"
