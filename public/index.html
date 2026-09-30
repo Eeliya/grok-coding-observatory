@@ -22,8 +22,28 @@
         <i class="icon-chevron-down caret" aria-hidden="true"></i>
       </button>
       <span id="branch" class="branch" hidden></span>
+      <div class="modebar" role="group" aria-label="Mode and commit navigation">
+        <button id="commit-prev" class="icon" title="Browse commits: latest commit ([ or Shift+←)">
+          <i class="icon-chevrons-left" aria-hidden="true"></i>
+        </button>
+        <div id="mode" class="mode mode-live">
+          <span id="mode-live"><i class="icon-radio" aria-hidden="true"></i> Live</span>
+          <span id="mode-other" hidden></span>
+          <span id="mode-commit" hidden>
+            <i class="icon-git-commit-horizontal" aria-hidden="true"></i>
+            <code id="cb-sha"></code>
+            <span id="cb-subject"></span>
+            <span id="cb-pos"></span>
+          </span>
+        </div>
+        <button id="commit-next" class="icon" title="Newer commit (] or Shift+→)" disabled>
+          <i class="icon-chevrons-right" aria-hidden="true"></i>
+        </button>
+        <button id="cb-play" class="play-btn" hidden title="Play this commit from the start">
+          <i class="icon-play" aria-hidden="true"></i> Play
+        </button>
+      </div>
       <span class="spacer"></span>
-      <span id="queue" class="muted"></span>
       <label class="speed">
         Speed
         <select id="speed">
@@ -50,46 +70,25 @@
         <div id="empty" class="muted empty">No changes yet — waiting for edits…</div>
       </aside>
       <section id="stage">
-        <div id="nowplaying" class="muted">Waiting for the assistant to edit something…</div>
+        <div id="progress" class="progress idle" aria-hidden="true">
+          <div id="progress-fill"></div>
+        </div>
+        <div id="nowplaying" class="muted">
+          <span id="np-text">Waiting for the assistant to edit something…</span>
+          <span id="progress-label" class="muted"></span>
+        </div>
         <div id="commitbar" class="commitbar" hidden>
-          <div class="cb-head">
-            <button id="cb-older" class="icon" title="Older commit ([ or Shift+←)">
-              <i class="icon-chevrons-left" aria-hidden="true"></i>
-            </button>
-            <i class="icon-git-commit-horizontal cb-icon" aria-hidden="true"></i>
-            <code id="cb-sha"></code>
-            <button
-              id="cb-newer"
-              class="icon"
-              title="Newer commit (] or Shift+→); from the newest: live"
-            >
-              <i class="icon-chevrons-right" aria-hidden="true"></i>
-            </button>
-            <span id="cb-subject"></span>
-            <span id="cb-meta" class="muted"></span>
-            <span class="spacer"></span>
-            <button id="cb-play" title="Play this commit again">
-              <i class="icon-play" aria-hidden="true"></i> Play
-            </button>
-          </div>
+          <span id="cb-meta" class="muted"></span>
           <div id="cb-files" class="cb-files"></div>
         </div>
         <div id="editor"></div>
         <div id="diff" hidden></div>
         <div id="timeline" class="timeline">
-          <div class="tl-controls">
-            <button id="commit-prev" class="icon" title="Older commit ([ or Shift+←)">
-              <i class="icon-chevrons-left" aria-hidden="true"></i>
-            </button>
-            <i
-              class="icon-git-commit-horizontal tl-commit-icon"
-              title="Commits of this branch"
-              aria-hidden="true"
-            ></i>
-            <button id="commit-next" class="icon" title="Newer commit (] or Shift+→)">
-              <i class="icon-chevrons-right" aria-hidden="true"></i>
-            </button>
-            <span class="tl-sep"></span>
+          <div
+            class="tl-controls"
+            title="Live session: uncommitted edits seen since the server started"
+          >
+            <span class="tl-title"><i class="icon-radio" aria-hidden="true"></i> Session</span>
             <button id="prev" class="icon" title="Previous edit (←)">
               <i class="icon-chevron-left" aria-hidden="true"></i>
             </button>
@@ -100,6 +99,7 @@
               <i class="icon-chevron-right" aria-hidden="true"></i>
             </button>
             <span id="timeline-count" class="muted">0 edits</span>
+            <span id="queue" class="muted"></span>
           </div>
           <div id="timeline-items" class="tl-items"></div>
         </div>

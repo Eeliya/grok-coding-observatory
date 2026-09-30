@@ -22,22 +22,31 @@ character by character.
 - **Session timeline** – a strip along the bottom lists every edit seen this session, in order,
   with file name, time and `+added −removed` lines (queued edits are dashed, the playing one is
   underlined). Commits / `HEAD` moves (commit icon + sha) and branch switches (branch icon + name) add a marker
-  instead of wiping it; switching repos clears it. Click an edit to replay exactly that change
+  instead of wiping it; switching repos clears it. These markers are clickable jump points into
+  that commit's view (commits that are not on the current branch open on their own). Click an edit to replay exactly that change
   (its before → after) in the editor; **Live** returns to live playback. The history is kept on
   the server (in memory, last 500 edits / ~50 MB of content), so a page refresh doesn't lose it.
+- **Header = mode + commits, bottom bar = live session.** The header shows which mode you are in:
+  a green **Live** pill, **Diff** / **Replay** while looking at a file diff or a past session edit,
+  or the commit's sha, subject and position (`HEAD~n`) in commit view. Everything about commits
+  lives there; the bottom bar only shows current, uncommitted, live work.
 - **Commit browser** – walk the current branch's real history (`git log --first-parent HEAD`,
-  newest first) with the « / » buttons next to the commit icon in the timeline bar (or `[` / `]`,
+  newest first) with the « / » buttons around the mode pill in the header (or `[` / `]`,
   `Shift+←` / `Shift+→`). « goes to older commits (from live: the `HEAD` commit), » to newer ones,
-  and » on the newest commit returns to live. The commit view shows sha, subject, author, relative
-  date and position (`HEAD~n`) on top plus the files it changed (+/−, binary marked); the diff
-  (first parent → commit) then plays file by file with the normal playback engine and speed.
-  Click a file for its side-by-side diff, **Play** to replay the commit. Root commits diff
-  against the empty tree, merge commits against their first parent, binary files are shown (not
-  typed), large/generated files use the instant policy, and huge commits (> 40 files or > 2000
-  changed lines) are shown instantly. Commit and branch markers in the session timeline are
-  clickable and open that commit (commits that are not on the current branch open on their own).
-- **Pause and step** – the pause button pauses live playback: new edits queue up (header shows
-  “Paused · N waiting”) and the timeline marks them pending. The ‹ / › buttons step through the timeline
+  and » on the newest commit returns to live. Under the now-playing line the commit view lists
+  author, relative date and the files it changed (+/−, binary marked); the diff (first parent →
+  commit) then plays file by file with the normal playback engine and speed. **Stop** (header)
+  halts it in place; **Play** resumes from the file it stopped at, or restarts once the commit
+  has finished. Click a file for its side-by-side diff. Root commits diff against the empty tree,
+  merge commits against their first parent, binary files are shown (not typed), large/generated
+  files use the instant policy, and huge commits (> 40 files or > 2000 changed lines) are shown
+  instantly.
+- **Progress bar** – a thin bar under the header fills while something plays: through the current
+  edit's characters in live mode (label `edit`, plus the waiting count), and through the files in
+  commit view (`3/7 files`, including the typing progress of the current file). It fades out when
+  nothing is playing (a stopped commit keeps a muted `stopped · file n/N` note).
+- **Pause and step** – the pause button in the bottom bar pauses live playback: new edits queue
+  up (the bottom bar shows “Paused · N waiting”) and the timeline marks them pending. The ‹ / › buttons step through the timeline
   one edit at a time; while paused in live mode, › plays exactly the next queued edit.
 - **What changed since I last looked** – the browser remembers, per repo (`localStorage` key
   `observatory.seen:<repo path>`), the content hash of each changed file you have seen. A file

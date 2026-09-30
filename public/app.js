@@ -264,8 +264,52 @@ function markActive(p, pulse = false) {
 }
 
 function setNowPlaying(html) {
-  $('nowplaying').innerHTML = html;
+  $('np-text').innerHTML = html;
 }
+
+// ------------------------------------------------------------------ progress bar
+
+/**
+ * Thin bar under the header: progress through what is playing now. `base`/`span`
+ * map the current item's own 0..1 progress into the overall range (a commit's
+ * file i of n covers [i/n, (i+1)/n]).
+ */
+const progress = { base: 0, span: 1, active: false, idleTimer: 0 };
+
+function progressStart(label, base = 0, span = 1) {
+  clearTimeout(progress.idleTimer);
+  Object.assign(progress, { base, span, active: true });
+  $('progress').classList.remove('idle');
+  $('progress-label').textContent = label;
+  $('progress-label').classList.remove('muted');
+  itemProgress(0);
+}
+
+function itemProgress(f) {
+  if (!progress.active) return;
+  const v = progress.base + progress.span * Math.min(1, Math.max(0, f));
+  $('progress-fill').style.width = `${(v * 100).toFixed(2)}%`;
+  $('progress').dataset.value = v.toFixed(3);
+}
+
+/** Nothing playing: fade the bar out (optionally keeping a short muted note). */
+function progressIdle(note = '', delay = 0) {
+  progress.active = false;
+  clearTimeout(progress.idleTimer);
+  const go = () => {
+    $('progress').classList.add('idle');
+    $('progress').dataset.value = '';
+    $('progress-fill').style.width = '0%';
+    $('progress-label').textContent = note;
+    $('progress-label').classList.add('muted');
+  };
+  if (delay) progress.idleTimer = setTimeout(go, delay);
+  else go();
+}
+
+// Typing progress of the hunk being played: weights of done / current / all hunks.
+let typing = { done: 0, weight: 0, total: 1 };
+const reportTyping = (f) => itemProgress((typing.done + typing.weight * f) / typing.total);
 const esc = (s) =>
   s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -380,6 +424,7 @@ async function pump() {
       const valid = () => token === state.token && ev.gen === state.gen;
       state.playingId = ev.id;
       renderTimeline();
+      progressStart(state.queue.length ? `edit · ${state.queue.length} waiting` : 'edit');
       let done = false;
       try {
         done = await play(ev, valid);
@@ -401,6 +446,7 @@ async function pump() {
     }
   } finally {
     state.playing = false;
+    if (state.mode === 'live') progressIdle(state.paused && state.queue.length ? 'paused' : '');
   }
 }
 
@@ -464,8 +510,10 @@ async function play(ev, valid, { label } = {}) {
     `${verb} <b>${esc(ev.path)}</b> · ${ev.hunks.length} hunk${ev.hunks.length === 1 ? '' : 's'} · ${when}`,
   );
 
+  itemProgress(0);
   if (ev.binary) {
     setNowPlaying(`${verb} <b>${esc(ev.path)}</b> · changed (binary or too large to show)`);
+    itemProgress(1);
     await pause(600, valid);
     return valid();
   }
@@ -487,6 +535,7 @@ async function play(ev, valid, { label } = {}) {
     await hold(valid);
     if (!valid()) return false;
     model.setValue(after);
+    itemProgress(1);
     const first = ev.hunks[0];
     if (first) editor.revealLineInCenter(Math.min(first.line, model.getLineCount()));
     const changed = ev.hunks
@@ -509,15 +558,24 @@ async function play(ev, valid, { label } = {}) {
   }
   if (cps() > SPEEDS[state.speed]) {
     setNowPlaying(
-      `${$('nowplaying').innerHTML} · <span class="note">catching up ×${Math.round(cps() / SPEEDS[state.speed])}</span>`,
+      `${$('np-text').innerHTML} · <span class="note">catching up ×${Math.round(cps() / SPEEDS[state.speed])}</span>`,
     );
   }
 
   const added = [];
-  for (const h of ev.hunks) {
+  // Progress weight per hunk: characters to type, plus a little for showing removals.
+  const weights = ev.hunks.map(
+    (h) => h.added.reduce((n, l) => n + l.length + 1, 0) + (h.removed.length ? 20 : 0) + 1,
+  );
+  typing = { done: 0, weight: 0, total: weights.reduce((a, b) => a + b, 0) || 1 };
+  for (const [k, h] of ev.hunks.entries()) {
     await hold(valid);
     if (!valid()) return false; // editor taken over: abandon this run
+    typing.weight = weights[k];
     await playHunk(model, h, valid);
+    typing.done += weights[k];
+    typing.weight = 0;
+    if (valid()) reportTyping(0);
     if (!valid()) return false;
     if (h.added.length) {
       added.push(lineDeco(h.line, h.line + h.added.length - 1, 'line-added'));
@@ -526,6 +584,7 @@ async function play(ev, valid, { label } = {}) {
     await pause(250, valid);
   }
   if (!valid()) return false;
+  itemProgress(1);
   setCaret(null);
   // Safety net: guarantee the final buffer is byte-identical to the file.
   if (model.getValue() !== after) model.setValue(after);
@@ -583,6 +642,7 @@ async function typeText(m, startLine, text, live) {
     const end = nextChunkEnd(text, i, n);
     pos = insertAt(m, pos, text.slice(i, end));
     i = end;
+    reportTyping(i / text.length);
     setCaret(pos.lineNumber, pos.column);
     editor.revealPositionInCenterIfOutsideViewport(pos);
     await sleep(16);
@@ -611,7 +671,7 @@ async function showDiff(p, base = null) {
   setNowPlaying(
     `Diff · <b>${esc(p)}</b> ${btn('head', `${icon('git-compare')} vs HEAD`)}${btn('seen', `${icon('eye')} since last look`)} <span class="muted">— Esc for live</span>`,
   );
-  for (const b of $('nowplaying').querySelectorAll('button.seg:not([disabled])')) {
+  for (const b of $('np-text').querySelectorAll('button.seg:not([disabled])')) {
     b.addEventListener('click', () => showDiff(p, b.dataset.base));
   }
   const text = (t) => (data.binary ? '(binary or too large to show)' : (t ?? ''));
@@ -820,8 +880,11 @@ function setMode(mode, { pane = mode === 'diff' ? 'diff' : 'editor' } = {}) {
     commits.fileIdx = -1;
     commits.instant = false;
   }
+  commits.playing = false; // playCommit() sets it again after taking over
+  progressIdle(); // whatever played is interrupted; the new owner restarts it
   $('commitbar').hidden = mode !== 'commit';
   $('live').hidden = mode === 'live';
+  renderModeBar();
   $('diff').hidden = pane !== 'diff';
   $('editor').hidden = pane === 'diff';
   if (pane !== 'diff') editor?.layout();
@@ -939,7 +1002,9 @@ async function viewEdit(index) {
   }
   const ev = await res.json();
   const n = state.timeline.slice(0, index + 1).filter((i) => i.type === 'edit').length;
-  await play(ev, () => token === state.token, { label: `Replaying edit ${n} ·` });
+  progressStart(`replay #${n}`);
+  const ok = await play(ev, () => token === state.token, { label: `Replaying edit ${n} ·` });
+  if (ok) progressIdle('', 400);
 }
 
 const editIndices = () =>
@@ -1069,7 +1134,65 @@ const commits = {
   detail: null, // GET /api/commit/:sha
   fileIdx: -1,
   instant: false,
+  playing: false,
+  where: '', // HEAD, HEAD~n or "not on <branch>"
+  resumeAt: 0, // file index Play continues from (0 = from the start)
 };
+
+/** Header: which mode we are in, commit navigation and the commit's Play/Stop. */
+function renderModeBar() {
+  const mode = state.mode;
+  const d = mode === 'commit' ? commits.detail : null;
+  const pill = $('mode');
+  pill.className = `mode mode-${mode}`;
+  $('mode-live').hidden = mode !== 'live';
+  $('mode-other').hidden = mode !== 'diff' && mode !== 'history';
+  $('mode-other').innerHTML =
+    mode === 'diff' ? `${icon('file-diff')} Diff` : `${icon('history')} Replay`;
+  $('mode-commit').hidden = mode !== 'commit';
+  if (mode === 'commit') {
+    $('cb-sha').textContent = d?.short ?? '…';
+    $('cb-sha').title = d?.sha ?? '';
+    $('cb-subject').textContent = d ? d.subject || '(no message)' : 'loading…';
+    $('cb-subject').title = d?.body ? `${d.subject}\n\n${d.body}` : (d?.subject ?? '');
+    $('cb-pos').textContent = commits.where;
+  }
+  $('commit-prev').disabled = !!d && d.parents.length === 0;
+  $('commit-prev').title =
+    mode === 'commit'
+      ? 'Older commit ([ or Shift+←)'
+      : 'Browse commits: latest commit ([ or Shift+←)';
+  $('commit-next').disabled = mode !== 'commit';
+  $('commit-next').title =
+    commits.index === 0 ? 'Back to live (] or Shift+→)' : 'Newer commit (] or Shift+→)';
+  const play = $('cb-play');
+  play.hidden = !d || !d.files.length;
+  play.classList.toggle('on', commits.playing);
+  play.innerHTML = commits.playing ? `${icon('square')} Stop` : `${icon('play')} Play`;
+  play.title = commits.playing
+    ? 'Stop playing this commit'
+    : commits.resumeAt > 0
+      ? `Resume from file ${commits.resumeAt + 1}/${d?.files.length ?? 0}`
+      : 'Play this commit from the start';
+}
+
+function stopCommit() {
+  if (state.mode !== 'commit' || !commits.playing) return;
+  state.token++; // interrupts the running play() without leaving commit mode
+  commits.playing = false;
+  commits.resumeAt = Math.max(0, commits.fileIdx);
+  setCaret(null);
+  const n = commits.detail.files.length;
+  progressIdle(`stopped · file ${commits.resumeAt + 1}/${n}`);
+  setCommitNote(`stopped at file ${commits.resumeAt + 1}/${n} · Play to resume · Esc for live`);
+  renderModeBar();
+}
+
+function toggleCommitPlay() {
+  if (state.mode !== 'commit' || !commits.detail) return;
+  if (commits.playing) stopCommit();
+  else playCommit(commits.resumeAt);
+}
 
 function resetCommits() {
   Object.assign(commits, { list: [], more: true, loaded: false });
@@ -1166,7 +1289,12 @@ async function showCommit(index) {
   if (!meta) return;
   setMode('commit');
   commits.index = index;
+  commits.detail = null;
+  $('cb-files').textContent = '';
+  $('cb-meta').textContent = '';
   const token = state.token;
+  commits.where = index === 0 ? 'HEAD' : `HEAD~${index}`;
+  renderModeBar();
   setNowPlaying(`${icon('git-commit-horizontal')} Loading <b>${esc(meta.short)}</b>…`);
   const res = await fetch(`/api/commit/${meta.sha}`);
   if (token !== state.token) return;
@@ -1181,24 +1309,23 @@ function enterCommit(detail, where, token = null) {
   }
   commits.detail = detail;
   commits.fileIdx = -1;
+  commits.where = where;
+  commits.resumeAt = 0;
   const lines = detail.files.reduce((n, f) => n + f.plus + f.minus, 0);
   commits.instant =
     detail.truncated || detail.files.length > COMMIT_INSTANT_FILES || lines > COMMIT_INSTANT_LINES;
-  renderCommitBar(where);
+  renderCommitBar();
   renderTimeline();
   playCommit(0);
 }
 
-function renderCommitBar(where) {
+function renderCommitBar() {
   const d = commits.detail;
-  $('cb-sha').textContent = d.short;
-  $('cb-sha').title = d.sha;
-  $('cb-subject').textContent = d.subject || '(no message)';
-  $('cb-subject').title = d.body ? `${d.subject}\n\n${d.body}` : d.subject;
+  renderModeBar();
   const merge = d.parents.length > 1 ? ` · ${icon('git-merge')} merge (vs first parent)` : '';
   const root = d.parents.length === 0 ? ' · root commit' : '';
   $('cb-meta').innerHTML =
-    `${icon('user')} ${esc(d.author)} · <span title="${esc(new Date(d.date).toLocaleString())}">${relTime(d.date)}</span> · ${esc(where)}${merge}${root}`;
+    `${icon('user')} ${esc(d.author)} · <span title="${esc(new Date(d.date).toLocaleString())}">${relTime(d.date)}</span>${merge}${root}`;
   const box = $('cb-files');
   box.textContent = '';
   d.files.forEach((f, i) => {
@@ -1222,7 +1349,6 @@ function renderCommitBar(where) {
     box.append(more);
   }
   if (!d.files.length) box.innerHTML = '<span class="muted">No file changes (empty commit)</span>';
-  $('cb-older').disabled = d.parents.length === 0;
 }
 
 function markCommitFile(i, cls) {
@@ -1243,24 +1369,35 @@ async function playCommit(from = 0) {
   const d = commits.detail;
   if (!d) return;
   setMode('commit', { pane: 'editor' });
-  $('commitbar').hidden = false;
-  commits.detail = d; // setMode keeps the detail in commit mode; be explicit anyway
   const token = state.token;
   const valid = () => token === state.token;
-  for (let i = from; i < d.files.length; i++) {
+  const n = d.files.length;
+  commits.playing = n > 0;
+  commits.resumeAt = from;
+  renderModeBar();
+  for (let i = from; i < n; i++) {
     const f = d.files[i];
     commits.fileIdx = i;
     markCommitFile(i, 'playing');
+    progressStart(`${i + 1}/${n} files`, i / n, 1 / n);
     const res = await fetch(`/api/commit/${d.sha}/file?path=${encodeURIComponent(f.path)}`);
     if (!valid()) return;
     if (!res.ok) continue;
     const ev = await res.json();
     const ok = await play(ev, valid, {
-      label: `${icon('git-commit-horizontal')} ${esc(d.short)} · ${i + 1}/${d.files.length} ·`,
+      label: `${icon('git-commit-horizontal')} ${esc(d.short)} · ${i + 1}/${n} ·`,
     });
     if (!ok) return;
   }
   if (!valid()) return;
+  commits.playing = false;
+  commits.resumeAt = 0;
+  renderModeBar();
+  if (n) {
+    progressStart(`${n}/${n} files`);
+    itemProgress(1);
+    progressIdle(`${n}/${n} files`, 700);
+  }
   markCommitFile(-1, 'playing');
   setCommitNote(
     d.files.length
@@ -1273,6 +1410,7 @@ async function showCommitFile(i) {
   const d = commits.detail;
   const f = d?.files[i];
   if (!f) return;
+  if (commits.playing) commits.resumeAt = Math.max(0, commits.fileIdx); // Play resumes here
   setMode('commit', { pane: 'diff' });
   const token = state.token;
   commits.fileIdx = i;
@@ -1298,9 +1436,7 @@ $('next').addEventListener('click', () => step(1));
 $('mark-seen').addEventListener('click', markAllSeen);
 $('commit-prev').addEventListener('click', () => commitStep(-1));
 $('commit-next').addEventListener('click', () => commitStep(1));
-$('cb-older').addEventListener('click', () => commitStep(-1));
-$('cb-newer').addEventListener('click', () => commitStep(1));
-$('cb-play').addEventListener('click', () => playCommit(0));
+$('cb-play').addEventListener('click', toggleCommitPlay);
 setupPicker();
 // Capture phase, so the (read-only) editor can't swallow the shortcuts.
 window.addEventListener(

@@ -196,11 +196,16 @@ aside {
   min-width: 0;
 }
 #nowplaying {
-  height: 28px;
-  line-height: 28px;
+  display: flex;
+  height: 26px;
+  line-height: 26px;
   padding: 0 14px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
+}
+#np-text {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -587,15 +592,22 @@ button.icon [class^='icon-'] {
 #nowplaying button.seg [class^='icon-'] {
   font-size: 10px;
 }
-.tl-sep {
-  width: 1px;
-  height: 18px;
-  margin: 0 4px;
-  background: var(--border);
+.tl-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 4px;
+  color: var(--added);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
-.tl-commit-icon {
-  color: var(--accent);
-  font-size: 13px;
+.tl-title [class^='icon-'] {
+  font-size: 11px;
+}
+.tl-controls #queue {
+  margin-left: 6px;
+  white-space: nowrap;
 }
 .tl-marker {
   cursor: default;
@@ -613,23 +625,47 @@ button.icon [class^='icon-'] {
 .tl-marker [class^='icon-'] {
   font-size: 11px;
 }
-/* Commit view */
-.commitbar {
-  flex: none;
-  border-bottom: 1px solid var(--border);
-  background: #1b1d1f;
-}
-.cb-head {
+/* Header mode bar: Live / Diff / Replay / commit sha + subject, commit navigation, Play/Stop */
+.modebar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px 2px 6px;
+  gap: 2px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.mode {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 460px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid #3c3c3c;
+  border-radius: 11px;
+  font-size: 11px;
   white-space: nowrap;
+}
+.mode > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   min-width: 0;
 }
-.cb-icon {
+.mode-live {
+  color: var(--added);
+  border-color: rgba(115, 201, 145, 0.45);
+}
+.mode-diff,
+.mode-history {
+  color: var(--modified);
+}
+.mode-commit {
   color: var(--accent);
-  font-size: 13px;
+  border-color: rgba(79, 193, 255, 0.5);
+  background: rgba(79, 193, 255, 0.08);
+}
+.mode [class^='icon-'] {
+  font-size: 12px;
 }
 #cb-sha {
   color: var(--accent);
@@ -640,26 +676,88 @@ button.icon [class^='icon-'] {
     monospace;
 }
 #cb-subject {
+  color: var(--text);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 60px;
-  flex: 0 1 auto;
+  min-width: 40px;
 }
-#cb-meta {
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 0 1 auto;
-}
-#cb-meta [class^='icon-'] {
+#cb-pos {
+  color: var(--muted);
   font-size: 10px;
 }
-#cb-play {
-  padding: 1px 7px;
+.play-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding: 1px 8px;
   font-size: 11px;
 }
-#cb-play [class^='icon-'] {
+.play-btn[hidden] {
+  display: none;
+}
+.play-btn.on {
+  color: var(--modified);
+  border-color: var(--modified);
+}
+.play-btn [class^='icon-'] {
+  font-size: 10px;
+}
+/* Progress bar under the header */
+.progress {
+  flex: none;
+  height: 2px;
+  background: #252526;
+  overflow: hidden;
+  transition: opacity 0.3s;
+}
+.progress.idle {
+  opacity: 0;
+}
+#progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #2a7ab8, var(--accent));
+  box-shadow: 0 0 6px var(--accent);
+  transition: width 0.15s linear;
+}
+.progress.idle #progress-fill {
+  transition: none;
+}
+#progress-label {
+  flex: none;
+  margin-left: 10px;
+  font-size: 10px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+#progress-label.muted {
+  color: var(--muted);
+}
+/* Commit view: meta + changed files under the now-playing line */
+.commitbar {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 10px 5px 14px;
+  border-bottom: 1px solid var(--border);
+  background: #1b1d1f;
+}
+.commitbar[hidden] {
+  display: none;
+}
+#cb-meta {
+  flex: none;
+  max-width: 45%;
+  padding-top: 2px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#cb-meta [class^='icon-'] {
   font-size: 10px;
 }
 button.icon:disabled {
@@ -670,9 +768,10 @@ button.icon:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  max-height: 56px;
+  flex: 1;
+  min-width: 0;
+  max-height: 44px;
   overflow-y: auto;
-  padding: 2px 10px 6px;
 }
 .cb-file {
   display: flex;
