@@ -15,7 +15,7 @@ const DEBOUNCE_MS = 60;
 const HEAD_POLL_MS = 2000;
 const ALWAYS_IGNORED = new Set(['node_modules', '.git', 'dist']);
 
-interface Content {
+export interface Content {
   text: string | null; // null = missing (or binary)
   binary: boolean;
 }
@@ -55,7 +55,7 @@ export interface ChangeEvent {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const isAlwaysIgnored = (rel: string) => rel.split('/').some((seg) => ALWAYS_IGNORED.has(seg));
 
-function decode(buf: Buffer | null): Content {
+export function decode(buf: Buffer | null): Content {
   if (buf == null) return { text: null, binary: false };
   if (buf.length > MAX_FILE_BYTES || buf.includes(0)) return { text: null, binary: true };
   return { text: buf.toString('utf8'), binary: false };

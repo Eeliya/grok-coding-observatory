@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer } from 'ws';
 import { Session, describeHead, safeRel, type ChangeEvent, type HeadInfo } from './session.ts';
+import { commitDetail, commitFileEvent, listCommits, resolveCommit } from './commits.ts';
 import { REPOS_ROOT, loadState, rememberRepo, resolveRepo, scanRepos } from './repos.ts';
 
 export type { ChangeEvent, ChangedFile, HeadInfo } from './session.ts';
@@ -173,6 +174,40 @@ const server = http.createServer(async (req, res) => {
       const item = history.find((i) => i.id === Number(hist[1]));
       if (!item) return sendJson(res, 404, { error: 'not in history (expired or unknown id)' });
       return sendJson(res, 200, item);
+    }
+    if (url.pathname === '/api/commits') {
+      const s = session;
+      if (!s) return sendJson(res, 409, { error: 'no repo selected' });
+      const before = url.searchParams.get('before');
+      if (before !== null && !/^[0-9a-f]{4,64}$/i.test(before)) {
+        return sendJson(res, 400, { error: 'invalid sha' });
+      }
+      const limit = Number(url.searchParams.get('limit') ?? 50);
+      try {
+        return sendJson(res, 200, {
+          head: s.head,
+          ...(await listCommits(s.root, { before, limit })),
+        });
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        if (status === 404) return sendJson(res, 404, { error: 'unknown commit' });
+        throw err;
+      }
+    }
+    const commit = url.pathname.match(/^\/api\/commit\/([^/]+)(\/file)?$/);
+    if (commit) {
+      const s = session;
+      if (!s) return sendJson(res, 409, { error: 'no repo selected' });
+      if (!/^[0-9a-f]{4,64}$/i.test(commit[1])) return sendJson(res, 400, { error: 'invalid sha' });
+      const full = await resolveCommit(s.root, commit[1]);
+      if (!full) return sendJson(res, 404, { error: 'unknown commit' });
+      const detail = await commitDetail(s.root, full);
+      if (!commit[2]) return sendJson(res, 200, detail);
+      const rel = safeRel(url.searchParams.get('path'));
+      if (!rel) return sendJson(res, 400, { error: 'invalid path' });
+      const ev = await commitFileEvent(s.root, detail, rel);
+      if (!ev) return sendJson(res, 404, { error: 'file not changed in this commit' });
+      return sendJson(res, 200, ev);
     }
     if (url.pathname === '/api/repos') return sendJson(res, 200, await listRepos());
     if (url.pathname === '/api/target') {
