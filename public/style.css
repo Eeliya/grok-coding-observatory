@@ -19,7 +19,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font:
-    13px/1.4 system-ui,
+    12px/1.4 system-ui,
     -apple-system,
     'Segoe UI',
     sans-serif;
@@ -56,7 +56,7 @@ header {
   border-radius: 10px;
   color: var(--accent);
   font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
-  font-size: 12px;
+  font-size: 10px;
   white-space: nowrap;
 }
 .branch.detached {
@@ -170,7 +170,7 @@ aside {
 .group-title {
   padding: 10px 12px 4px;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.05em;
   color: var(--muted);
   user-select: none;

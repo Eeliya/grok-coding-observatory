@@ -562,7 +562,7 @@ require(['vs/editor/editor.main'], () => {
     theme: 'vs-dark',
     readOnly: true,
     automaticLayout: true,
-    fontSize: 14,
+    fontSize: 12,
     minimap: { enabled: true },
     scrollBeyondLastLine: false,
     smoothScrolling: true,
