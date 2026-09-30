@@ -67,6 +67,9 @@ character by character.
   `public/playback-policy.js`.
 - **Speed control** – Slow / Normal / Fast (default) / Turbo / Instant, remembered in
   `localStorage`.
+- **Code font size** – A− / A+ in the header (8–20 px, default 11 px; click the px value to
+  reset) resize the code in the editor and all diff views live (line height follows), remembered
+  in `localStorage`. No Ctrl/Cmd +/− shortcut, so browser zoom keeps working.
 - Syntax highlighting chosen by file extension, dark theme, minimal UI with
   [Lucide](https://lucide.dev) icons (icon font `lucide-static@1.49.0` from jsDelivr).
 - Ignores `node_modules`, `.git`, `dist` and anything git-ignored.

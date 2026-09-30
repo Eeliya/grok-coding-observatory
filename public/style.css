@@ -824,3 +824,23 @@ button.icon:disabled {
   color: var(--deleted);
   margin-left: 3px;
 }
+.fontsize {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+.fontsize button.icon {
+  padding: 2px 3px;
+}
+.fontsize button.icon [class^='icon-'] {
+  font-size: 13px;
+}
+.font-px {
+  min-width: 34px;
+  padding: 1px 4px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}

@@ -15,6 +15,14 @@ window.MonacoEnvironment = {
 // Characters typed per second for each speed.
 const SPEEDS = { slow: 40, normal: 160, fast: 700, turbo: 3000, instant: Infinity };
 const SPEED_KEY = 'observatory.speed';
+// Code font size (px) for the editor and diff editors; adjustable in the header.
+const FONT_KEY = 'observatory.fontSize';
+const FONT_MIN = 8;
+const FONT_MAX = 20;
+const FONT_DEFAULT = 11;
+let fontSize = Math.round(Number(localStorage.getItem(FONT_KEY)) || FONT_DEFAULT);
+fontSize = Math.min(FONT_MAX, Math.max(FONT_MIN, fontSize));
+const fontOptions = () => ({ fontSize, lineHeight: Math.round(fontSize * 1.5) });
 
 const LANGS = {
   js: 'javascript',
@@ -139,6 +147,23 @@ let decorations = null;
 let caret = null;
 
 // ------------------------------------------------------------------ UI
+
+function setFontSize(px) {
+  fontSize = Math.min(FONT_MAX, Math.max(FONT_MIN, px));
+  localStorage.setItem(FONT_KEY, String(fontSize));
+  $('font-size').textContent = `${fontSize}px`;
+  $('font-dec').disabled = fontSize <= FONT_MIN;
+  $('font-inc').disabled = fontSize >= FONT_MAX;
+  editor?.updateOptions(fontOptions());
+  diffEditor?.updateOptions(fontOptions()); // both sides of the diff (HEAD, commit, last look)
+}
+
+function setupFont() {
+  $('font-dec').addEventListener('click', () => setFontSize(fontSize - 1));
+  $('font-inc').addEventListener('click', () => setFontSize(fontSize + 1));
+  $('font-size').addEventListener('click', () => setFontSize(FONT_DEFAULT));
+  setFontSize(fontSize);
+}
 
 function setupSpeed() {
   const sel = $('speed');
@@ -687,7 +712,7 @@ function setDiff(p, original, modified) {
       renderSideBySide: true,
       originalEditable: false,
       scrollBeyondLastLine: false,
-      fontSize: 12,
+      ...fontOptions(),
     });
   }
   const old = diffEditor.getModel();
@@ -1429,6 +1454,7 @@ async function showCommitFile(i) {
 // ------------------------------------------------------------------ boot
 
 setupSpeed();
+setupFont();
 $('live').addEventListener('click', backToLive);
 $('pause').addEventListener('click', togglePause);
 $('prev').addEventListener('click', () => step(-1));
@@ -1477,7 +1503,7 @@ require(['vs/editor/editor.main'], () => {
     theme: 'vs-dark',
     readOnly: true,
     automaticLayout: true,
-    fontSize: 12,
+    ...fontOptions(),
     minimap: { enabled: true },
     scrollBeyondLastLine: false,
     smoothScrolling: true,
