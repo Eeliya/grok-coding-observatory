@@ -73,6 +73,15 @@ const post = (body: unknown, type = 'application/json') =>
     body: JSON.stringify(body),
   });
 const of = (type: string) => messages.filter((m) => m.type === type);
+/** The HTTP reply can beat the WebSocket broadcast: wait for the reset of `target`. */
+async function resetFor(target: string) {
+  for (let i = 0; i < 100; i++) {
+    const r = of('reset').at(-1);
+    if (r?.target === target) return r;
+    await sleep(20);
+  }
+  throw new Error(`no reset broadcast for ${target}`);
+}
 
 before(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'observatory-switch-'));
@@ -136,7 +145,7 @@ test('rejects invalid targets and non-JSON requests', async () => {
 test('switches repos live: reset broadcast, old watcher stopped, new one active', async () => {
   let res = await post({ path: repoA });
   assert.equal(res.status, 200);
-  let reset = of('reset').at(-1)!;
+  let reset = await resetFor(repoA);
   assert.equal(reset.reason, 'repo');
   assert.equal(reset.target, repoA);
   assert.equal(reset.head.branch, 'main');
@@ -149,7 +158,7 @@ test('switches repos live: reset broadcast, old watcher stopped, new one active'
 
   res = await post({ path: repoB });
   assert.equal(res.status, 200);
-  reset = of('reset').at(-1)!;
+  reset = await resetFor(repoB);
   assert.equal(reset.target, repoB);
   assert.deepEqual(
     reset.files.map(({ hash: _h, ...f }: { hash?: string }) => f),
