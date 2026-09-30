@@ -124,6 +124,12 @@ export class Session {
 
     const watcher = chokidar.watch(this.target, {
       ignoreInitial: true,
+      // Windows drives mounted in WSL (/mnt/c/...) deliver no inotify events: poll there,
+      // or wherever WATCH_POLL=1 is set (WATCH_POLL=0 forces native events).
+      usePolling: process.env.WATCH_POLL
+        ? process.env.WATCH_POLL !== '0'
+        : /^\/mnt\/[a-z]\//.test(this.target),
+      interval: 300,
       ignored: (p: string) => this.isIgnoredPath(p),
     });
     this.watcher = watcher;

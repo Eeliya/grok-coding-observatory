@@ -295,6 +295,19 @@ if (initial) {
 }
 if (!session) console.log('No repo selected yet — pick one in the browser.');
 
+// Friendly message instead of a stack trace when the port is taken (e.g. a second copy).
+wss.on('error', () => {}); // ws re-emits server errors; handled below
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `Port ${PORT} on ${HOST} is already in use — is the observatory already running?\n` +
+        `Open http://localhost:${PORT}, stop the other process, or start on another port: PORT=4478 npm start`,
+    );
+  } else {
+    console.error(`Cannot listen on ${HOST}:${PORT}: ${err.message}`);
+  }
+  process.exit(1);
+});
 server.listen(PORT, HOST, () => {
   const { port } = server.address() as AddressInfo;
   const shownHost = HOST === '0.0.0.0' || HOST === '127.0.0.1' ? 'localhost' : HOST;

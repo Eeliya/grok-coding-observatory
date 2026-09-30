@@ -1,165 +1,120 @@
 # grok-coding-observatory
 
-A tiny local web app for **passively watching an AI coding assistant change code, like a video**.
+**Watch your AI coding assistant's (for example Grok Bot's) edits replay live in your browser, file by file.**
 
-The assistant edits files in a target project (for example `/home/eeliya/work/website-photo-motion`).
-The observatory watches that project and replays every edit in the browser with Monaco: it jumps
-to the changed hunk, highlights and deletes the removed lines, then types the new code
-character by character.
+![Live view: an edit being typed into the editor, the changed-files sidebar with unseen dots, and the session timeline along the bottom](docs/live.png)
 
-## Features
-
-- **Live replay** – every file save becomes a queued playback event; rapid successive changes are
-  queued in order (nothing is dropped). Each event is diffed against the previous known content of
-  the file (last snapshot, or `HEAD` the first time the file is touched).
-- **Changed-files sidebar** – files that differ from git `HEAD`, grouped into **Changed**
-  (modified / staged / deleted / renamed tracked files) and **Untracked** (new, not ignored;
-  collapsed by default, state remembered). Git-ignored files are never shown. Files edited live
-  get a blue ● marker (with a left accent bar for the first minute), and edited untracked files
-  stay visible even when the Untracked group is collapsed. Updated live.
-- **Diff vs HEAD** – click a file to open a side-by-side Monaco diff against `HEAD`. Live playback
-  pauses (events keep queuing); press **Live** or `Esc` to resume.
-- **Session timeline** – a strip along the bottom lists every edit seen this session, in order,
-  with file name, time and `+added −removed` lines (queued edits are dashed, the playing one is
-  underlined). Commits / `HEAD` moves (commit icon + sha) and branch switches (branch icon + name) add a marker
-  instead of wiping it; switching repos clears it. These markers are clickable jump points into
-  that commit's view (commits that are not on the current branch open on their own). Click an edit to replay exactly that change
-  (its before → after) in the editor; **Live** returns to live playback. The history is kept on
-  the server (in memory, last 500 edits / ~50 MB of content), so a page refresh doesn't lose it.
-- **Header = mode + commits, bottom bar = live session.** The header shows which mode you are in:
-  a green **Live** pill, **Diff** / **Replay** while looking at a file diff or a past session edit,
-  or the commit's sha, subject and position (`HEAD~n`) in commit view. Everything about commits
-  lives there; the bottom bar only shows current, uncommitted, live work.
-- **Commit browser** – walk the current branch's real history (`git log --first-parent HEAD`,
-  newest first) with the « / » buttons around the mode pill in the header (or `[` / `]`,
-  `Shift+←` / `Shift+→`). « goes to older commits (from live: the `HEAD` commit), » to newer ones,
-  and » on the newest commit returns to live. Under the now-playing line the commit view lists
-  author, relative date and the files it changed (+/−, binary marked); the diff (first parent →
-  commit) then plays file by file with the normal playback engine and speed. **Stop** (header)
-  halts it in place; **Play** resumes from the file it stopped at, or restarts once the commit
-  has finished. Click a file for its side-by-side diff. Root commits diff against the empty tree,
-  merge commits against their first parent, binary files are shown (not typed), large/generated
-  files use the instant policy, and huge commits (> 40 files or > 2000 changed lines) are shown
-  instantly.
-- **Progress bar** – a thin bar under the header fills while something plays: through the current
-  edit's characters in live mode (label `edit`, plus the waiting count), and through the files in
-  commit view (`3/7 files`, including the typing progress of the current file). It fades out when
-  nothing is playing (a stopped commit keeps a muted `stopped · file n/N` note).
-- **Pause and step** – the pause button in the bottom bar pauses live playback: new edits queue
-  up (the bottom bar shows “Paused · N waiting”) and the timeline marks them pending. The ‹ / › buttons step through the timeline
-  one edit at a time; while paused in live mode, › plays exactly the next queued edit.
-- **What changed since I last looked** – the browser remembers, per repo (`localStorage` key
-  `observatory.seen:<repo path>`), the content hash of each changed file you have seen. A file
-  counts as seen when its playback finished or you opened its diff. Files with unseen changes get
-  an orange dot, and a bar at the top of the sidebar shows the count with **Mark all seen**. The
-  diff view has a **since last look** toggle that diffs the file against the content you last saw
-  (snapshots up to 200 KB are kept; the first visit to a repo takes the current state as seen).
-- **Branch awareness** – the header shows the watched project's branch and short `HEAD` sha
-  (or `detached · <sha>`). A checkout, commit, reset or any other `HEAD` move is treated as a
-  reset: baselines and the file list are rebuilt from the new `HEAD` and nothing is replayed as
-  typing (queued playback is dropped). Detected by a cheap 2 s poll plus a check before every
-  replayed change; file events are held while git holds `index.lock`/`HEAD.lock`.
-- **Big changes play instantly** – lock/generated files (`package-lock.json`, `yarn.lock`,
-  `pnpm-lock.yaml`, `composer.lock`, `*.min.js`, `*.map`, …) and any single change larger than
-  80 changed lines or 4000 changed characters are shown at once: final content, scrolled to the
-  first change, briefly highlighted, with a "shown instantly" note. When playback falls behind it
-  fast-forwards: 4× faster from 3 queued events, instant from 8. All thresholds live in
-  `public/playback-policy.js`.
-- **Speed control** – Slow / Normal / Fast (default) / Turbo / Instant, remembered in
-  `localStorage`.
-- **Code font size** – A− / A+ in the header (8–20 px, default 11 px; click the px value to
-  reset) resize the code in the editor and all diff views live (line height follows), remembered
-  in `localStorage`. No Ctrl/Cmd +/− shortcut, so browser zoom keeps working.
-- Syntax highlighting chosen by file extension, dark theme, minimal UI with
-  [Lucide](https://lucide.dev) icons (icon font `lucide-static@1.49.0` from jsDelivr).
-- Ignores `node_modules`, `.git`, `dist` and anything git-ignored.
+Point it at the repo your assistant is working in, keep the tab open beside the chat, and every
+save shows up as a short replay: it jumps to the changed lines, highlights the removed ones and
+types the new code. It runs locally, needs no build step and reads your repo only through git and
+the file system.
 
 ## Requirements
 
-- Node.js **22.18+** (runs TypeScript natively via type stripping; no build step)
-- `git` on `PATH`; the target directory must be inside a git repository
-- Internet access in the browser (Monaco and the Lucide icon font are loaded from the jsDelivr CDN)
+- **Node.js 22.18+** (it runs TypeScript directly; `nvm use` picks the version from `.nvmrc`)
+- **git** on your `PATH`; the folder you watch must be inside a git work tree
+- A modern browser with internet access (Monaco and the Lucide icon font load from jsDelivr)
 
-## Setup
+## Quick start
 
 ```bash
-cd /home/eeliya/work/grok-coding-observatory
+git clone https://github.com/Eeliya/grok-coding-observatory.git
+cd grok-coding-observatory
 npm install
+npm start                          # then pick a repo in the browser
+# or
+npm start -- /path/to/your/repo    # watch that repo right away
 ```
 
-## Usage
+Open **<http://localhost:4477>**. The last repo you watched is remembered for the next `npm start`.
 
-```bash
-npm start
-```
+- **macOS / Linux:** run the commands in a terminal and open the URL in any browser.
+- **Windows:** run it **inside WSL** (Ubuntu etc.), next to your repos, and open
+  <http://localhost:4477> in your Windows browser (WSL forwards localhost). Keep your repos in the
+  WSL file system (`~/…`) for instant file events; repos under `/mnt/c/…` work too but are polled.
 
-Open <http://localhost:4477> (also works from the Windows browser via WSL localhost forwarding).
+## Using it
 
-- **Pick the repo in the browser.** Click the repo name in the header (or “Choose repo…”) to open
-  the picker: recent repos, git repos found under `~/work` (two levels deep), or type any absolute
-  path (`~/…` works) and press Enter. Typing also filters the lists; Enter picks a single match.
-  The switch is live: the old watcher stops, the new repo's branch, file list and playback reset.
-- **Remembered.** The last used repo is watched again on the next `npm start`; recent repos are
-  kept in `~/.config/grok-coding-observatory/state.json`.
-- **Optional start path.** `npm start -- /path/to/project` watches that repo right away (and makes
-  it the last used one). With no argument and nothing remembered, the picker opens by itself.
+| Area             | What it does                                                                                                                                                                                                                                                            |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Live view**    | Each saved change is replayed in order (nothing is dropped). Big changes, lock files and generated files appear instantly; a backlog fast-forwards. The thin bar under the header shows playback progress.                                                              |
+| **Sidebar**      | Files that differ from `HEAD`, split into Changed and Untracked (git-ignored files never show). Click a file for a side-by-side diff vs `HEAD`.                                                                                                                         |
+| **Unseen dots**  | An orange dot marks files that changed since you last looked (played back or opened). **Mark all seen** clears them; the diff view can also show **since last look**. Stored per repo in your browser.                                                                  |
+| **Timeline**     | The bottom bar lists this session's uncommitted edits with time and +/− lines. Click one to replay exactly that edit. Commit and branch-switch markers are clickable too. Kept on the server, so a refresh keeps it.                                                    |
+| **Pause / step** | Pause live playback (new edits wait, with a count), then step through edits one at a time with ‹ / ›.                                                                                                                                                                   |
+| **Commits**      | The header shows the mode: **Live**, or the sha, subject and `HEAD~n` of a commit. « / » walk the current branch's history (first-parent); a commit plays back file by file with **Play / Stop**, or click a file for its diff. » on the newest commit returns to live. |
+| **Controls**     | Header: repo picker (recent repos, repos found under `~/work`, or any path), A− / A+ code font size (8–20 px), and playback speed (Slow … Instant). All remembered.                                                                                                     |
 
-Optional environment variables (copy `.env.sample` to `.env`):
+![Commit view: the header shows the commit with a Stop button while its files replay, with the progress bar at 2/2 files](docs/commit-view.png)
 
-| Variable                 | Default                             | Description                                  |
-| ------------------------ | ----------------------------------- | -------------------------------------------- |
-| `TARGET_DIR`             | –                                   | Initial repo (CLI argument wins)             |
-| `PORT`                   | `4477`                              | HTTP / WebSocket port                        |
-| `HOST`                   | `127.0.0.1`                         | Interface to bind (`0.0.0.0` for LAN access) |
-| `REPOS_ROOT`             | `~/work`                            | Folder scanned for repos in the picker       |
-| `OBSERVATORY_CONFIG_DIR` | `~/.config/grok-coding-observatory` | Where recent / last-used repos are stored    |
+### Keyboard shortcuts
 
-Leave the tab open while the assistant works; edits play back automatically.
+| Key                                | Action                                                                        |
+| ---------------------------------- | ----------------------------------------------------------------------------- |
+| `Space`                            | Pause / resume live playback                                                  |
+| `←` / `→`                          | Previous / next edit in the timeline (`→` while paused plays the next queued) |
+| `[` / `]` or `Shift+←` / `Shift+→` | Older / newer commit (newer from the newest commit returns to live)           |
+| `Esc`                              | Close the picker → back to live from a diff, replay or commit → resume        |
 
-Keyboard shortcuts (ignored while typing in an input):
+Shortcuts are ignored while you type in an input.
 
-| Key                              | Action                                                                                 |
-| -------------------------------- | -------------------------------------------------------------------------------------- |
-| `Space`                          | Pause / resume live playback                                                           |
-| `←`/`→`                          | Previous / next edit in the timeline (`→` while paused plays the next queued)          |
-| `[` / `]` or `Shift+←`/`Shift+→` | Older / newer commit of the current branch (newest → live)                             |
-| `Esc`                            | Close the picker → leave diff / timeline / commit view back to live → resume if paused |
+## Using it with Grok Bot
 
-## How it works
+1. Start the observatory where your repos live (on Windows: in WSL) and open <http://localhost:4477>.
+2. Pick the repo your assistant is editing (click the repo name in the header, or
+   `npm start -- ~/work/my-project`).
+3. Keep the tab open beside the chat. Each edit replays as it lands; when you come back, the dots
+   and the timeline show what changed while you were away, and « walks through the commits it made.
 
-- `src/server.ts` – Node HTTP server + `ws` WebSocket, run directly by Node (no compile step).
-  Owns the current watch session and switches it live (`POST /api/target`); `src/repos.ts`
-  validates paths, scans for repos and persists recent / last-used repos.
-- `src/commits.ts` – read-only first-parent history, commit details and per-file commit
-  playback events for the commit browser (shas are validated and resolved with `rev-parse`).
-- `src/session.ts` – one watched work tree: `chokidar` watcher, snapshots and HEAD tracking. On each change it reads the file, diffs it line by line (`src/hunks.ts`, using
-  `diff`) against the last snapshot and broadcasts `{ type: "change", path, before, after, hunks }`.
-  Changes are debounced per file (60 ms) and processed through one serial queue, so each event
-  starts exactly where the previous one ended. `git status --porcelain` drives the sidebar.
-- `public/` – a single static page (vanilla JS modules, Monaco from CDN) that queues events and
-  animates them. `public/replay.js` holds the pure edit operations; the same code is exercised by
-  the tests, and after each event the buffer is forced to match the file exactly.
+It is local-only: the server binds to `127.0.0.1`, reads your repo via git and the file system, and
+never sends your code anywhere (the page only fetches Monaco and the icon font from a CDN). It never
+writes to the repo and never takes git locks.
 
-HTTP endpoints: `GET /api/files` (current repo, HEAD, changed files), `GET /api/diff?path=<repo-relative path>`
-(HEAD vs working copy, plus `currentHash`), `GET /api/history` (session timeline summaries),
-`GET /api/history/<id>` (one full recorded edit: before, after, hunks),
-`GET /api/commits?before=<sha>&limit=<n>` (first-parent history of HEAD, newest first, `limit` ≤ 200,
-`before` pages to older commits), `GET /api/commit/<sha>` (meta + changed files vs the first
-parent), `GET /api/commit/<sha>/file?path=<path>` (one file as a playback event; shas must be
-4–64 hex chars and resolve to a commit, else 400 / 404), `GET /api/repos` (recent + discovered repos), `POST /api/target`
-(`{"path": "..."}`, JSON only) to switch repos, WebSocket at `/ws`.
+## Configuration
+
+Everything is optional. Set variables in the environment or copy `.env.sample` to `.env`.
+
+| Variable                 | Default                             | Description                                                       |
+| ------------------------ | ----------------------------------- | ----------------------------------------------------------------- |
+| `PORT`                   | `4477`                              | HTTP / WebSocket port                                             |
+| `HOST`                   | `127.0.0.1`                         | Interface to bind (`0.0.0.0` exposes it on your network)          |
+| `TARGET_DIR`             | –                                   | Repo to watch at start (a CLI path wins)                          |
+| `REPOS_ROOT`             | `~/work`                            | Folder scanned (two levels deep) for repos in the picker          |
+| `OBSERVATORY_CONFIG_DIR` | `~/.config/grok-coding-observatory` | Where the last-used and recent repos are stored                   |
+| `WATCH_POLL`             | auto                                | `1` = poll for changes, `0` = native events (auto polls `/mnt/…`) |
+
+## Troubleshooting
+
+- **"Port 4477 … is already in use"** – another copy is running (just open the URL), or start on
+  another port: `PORT=4478 npm start`. To find the old one on Linux/WSL:
+  `ss -ltnp 'sport = :4477'` (then `kill <pid>`).
+- **"Not a git work tree"** – the folder must be inside a git repo (`git init` it, or pick the
+  repo root). The picker shows the exact error.
+- **"needs Node.js 22.18 or newer"** – install a newer Node (`nvm install 22 && nvm use`).
+- **Edits don't show up (WSL)** – for repos on a Windows drive (`/mnt/c/…`) changes are polled,
+  which is slower; move the repo into WSL (`~/…`) or force it with `WATCH_POLL=1`. On Linux with
+  very large repos, raise `fs.inotify.max_user_watches`.
+- **Blank editor** – the browser needs to reach `cdn.jsdelivr.net` for Monaco.
 
 ## Development
 
 ```bash
-npm run check         # typecheck + prettier check + tests
-npm test              # unit (randomised replay) + end-to-end (temp git repo, real server)
-npm run typecheck     # tsc --noEmit
-npm run format        # prettier --write .
+npm run check   # typecheck + prettier check + tests (node:test, temp git repos, real server)
+npm test        # tests only
+npm run format  # prettier --write .
 ```
 
-Running it detached from a one-off WSL command (e.g. from Windows):
+How it's built: `src/server.ts` (HTTP + WebSocket, repo switching), `src/session.ts` (chokidar
+watcher, per-file snapshots, HEAD tracking, line diffs via `src/hunks.ts`), `src/commits.ts`
+(read-only branch history), `src/repos.ts` (repo validation, recent repos); `public/` is a single
+static page (vanilla JS modules + Monaco) with the replay logic in `public/replay.js` and the
+instant-playback thresholds in `public/playback-policy.js`.
 
-```bash
-wsl -d Ubuntu -- bash -lc "cd ~/work/grok-coding-observatory && setsid nohup npm start -- ~/work/website-photo-motion > /tmp/observatory.log 2>&1 < /dev/null &"
-```
+## Reference
+
+The HTTP and WebSocket API (used by the page, handy for scripting) is described in
+[docs/API.md](docs/API.md).
+
+## License
+
+[MIT](LICENSE)

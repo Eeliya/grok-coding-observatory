@@ -6,6 +6,7 @@
   "type": "module",
   "main": "src/server.ts",
   "scripts": {
+    "prestart": "node scripts/check-node.cjs",
     "start": "node --env-file-if-exists=.env src/server.ts",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc",
@@ -27,5 +28,9 @@
     "@types/ws": "^8.18.2",
     "prettier": "^3.9.9",
     "typescript": "^5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eeliya/grok-coding-observatory.git"
   }
 }
