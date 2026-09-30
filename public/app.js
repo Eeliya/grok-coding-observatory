@@ -85,10 +85,13 @@ function languageFor(p) {
 }
 
 const $ = (id) => document.getElementById(id);
+/** Lucide icon-font glyph (see lucide-static in index.html). */
+const icon = (name, cls = '') =>
+  `<i class="icon-${name}${cls ? ` ${cls}` : ''}" aria-hidden="true"></i>`;
 const state = {
   queue: [],
   playing: false,
-  mode: 'live', // 'live' | 'diff' | 'history'
+  mode: 'live', // 'live' | 'diff' | 'history' | 'commit'
   files: [],
   current: null,
   target: null,
@@ -111,7 +114,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const cps = () =>
   state.mode === 'live'
     ? effectiveCps(SPEEDS[state.speed], state.queue.length)
-    : SPEEDS[state.speed];
+    : state.mode === 'commit' && commits.instant
+      ? Infinity
+      : SPEEDS[state.speed];
 const isInstant = () => cps() === Infinity;
 // While paused, live playback freezes in place until resumed (or interrupted).
 const frozen = () => state.paused && !state.stepping && state.mode === 'live';
@@ -147,10 +152,10 @@ function setupSpeed() {
 function updateQueueLabel() {
   const n = state.queue.length;
   const q = $('queue');
-  q.textContent = state.paused ? `❚❚ Paused · ${n} waiting` : n ? `${n} queued` : '';
+  q.innerHTML = state.paused ? `${icon('pause')} Paused · ${n} waiting` : n ? `${n} queued` : '';
   q.classList.toggle('paused', state.paused);
-  $('live').textContent = n ? `● Live (${n} queued)` : '● Live';
-  $('pause').textContent = state.paused ? '▶' : '❚❚';
+  $('live').innerHTML = `${icon('radio')} Live${n ? ` (${n} queued)` : ''}`;
+  $('pause').innerHTML = icon(state.paused ? 'play' : 'pause');
   $('pause').title = state.paused ? 'Resume live playback (Space)' : 'Pause live playback (Space)';
   $('pause').classList.toggle('on', state.paused);
 }
@@ -189,7 +194,7 @@ function fileItem(f) {
     if (Date.now() - f.editedAt < FRESH_MS) li.classList.add('fresh');
     const mark = document.createElement('span');
     mark.className = 'edited';
-    mark.textContent = '●';
+    mark.innerHTML = icon('circle-dot');
     li.append(mark);
     li.title += ` — edited live ${timeAgo(f.editedAt)}`;
   }
@@ -203,7 +208,7 @@ function fileGroup(title, files, { collapsible = false, open = true, onToggle } 
   const head = document.createElement('div');
   head.className = 'group-title' + (collapsible ? ' collapsible' : '');
   const edited = files.filter((f) => f.editedAt).length;
-  head.textContent = `${collapsible ? (open ? '▾ ' : '▸ ') : ''}${title} (${files.length})`;
+  head.innerHTML = `${collapsible ? icon(open ? 'chevron-down' : 'chevron-right', 'chev') : ''}${esc(title)} (${files.length})`;
   if (edited) {
     const e = document.createElement('span');
     e.className = 'group-edited';
@@ -311,10 +316,11 @@ function describeHead(h) {
 }
 
 function setHead(h) {
+  state.head = h;
   const el = $('branch');
   el.hidden = !h;
   if (!h) return;
-  el.textContent = `⎇ ${describeHead(h)}`;
+  el.innerHTML = `${icon('git-branch')} ${esc(describeHead(h))}`;
   el.classList.toggle('detached', !!h.detached);
   el.title = h.detached ? 'Detached HEAD' : `Branch ${h.branch} at ${h.sha ?? '(no commits)'}`;
 }
@@ -326,6 +332,8 @@ async function handleReset(msg) {
   state.token++;
   state.queue = [];
   if (msg.marker) addToTimeline(msg.marker);
+  commits.list = [];
+  commits.loaded = false; // the branch history changed; reload on next use
   updateQueueLabel();
   setHead(msg.head);
   state.files = msg.files;
@@ -396,8 +404,8 @@ async function pump() {
   }
 }
 
-function modelFor(p, text) {
-  const uri = monaco.Uri.from({ scheme: 'file', path: '/' + p });
+function modelFor(p, text, scheme = 'file') {
+  const uri = monaco.Uri.from({ scheme, path: '/' + p });
   let model = monaco.editor.getModel(uri);
   if (!model) model = monaco.editor.createModel(text, languageFor(p), uri);
   model.setEOL(monaco.editor.EndOfLineSequence.LF);
@@ -442,7 +450,7 @@ async function play(ev, valid, { label } = {}) {
   if (!valid()) return false;
   const before = ev.before ?? '';
   const after = ev.after ?? '';
-  const model = modelFor(ev.path, before);
+  const model = modelFor(ev.path, before, ev.type === 'commit-file' ? 'commit' : 'file');
   if (editor.getModel() !== model) editor.setModel(model);
   if (model.getValue() !== before) model.setValue(before);
   clearTimeout(highlightTimer);
@@ -468,9 +476,13 @@ async function play(ev, valid, { label } = {}) {
       ? 'generated file — shown instantly'
       : ev.instant === 'large'
         ? `large change (${changeSize(ev.hunks).lines} lines) — shown instantly`
-        : state.mode === 'live' && state.speed !== 'instant' && isInstant()
-          ? `catching up (${queued} queued) — shown instantly`
-          : null;
+        : ev.instant === 'binary'
+          ? 'binary or too large — shown instantly'
+          : state.mode === 'commit' && commits.instant
+            ? 'huge commit — shown instantly'
+            : state.mode === 'live' && state.speed !== 'instant' && isInstant()
+              ? `catching up (${queued} queued) — shown instantly`
+              : null;
   if (ev.instant || isInstant()) {
     await hold(valid);
     if (!valid()) return false;
@@ -597,11 +609,16 @@ async function showDiff(p, base = null) {
   const btn = (b, text) =>
     `<button class="seg${base === b ? ' on' : ''}" data-base="${b}"${b === 'seen' && !canSince ? ' disabled title="No snapshot of an earlier look"' : ''}>${text}</button>`;
   setNowPlaying(
-    `Diff · <b>${esc(p)}</b> ${btn('head', 'vs HEAD')}${btn('seen', 'since last look')} <span class="muted">— Esc for live</span>`,
+    `Diff · <b>${esc(p)}</b> ${btn('head', `${icon('git-compare')} vs HEAD`)}${btn('seen', `${icon('eye')} since last look`)} <span class="muted">— Esc for live</span>`,
   );
   for (const b of $('nowplaying').querySelectorAll('button.seg:not([disabled])')) {
     b.addEventListener('click', () => showDiff(p, b.dataset.base));
   }
+  const text = (t) => (data.binary ? '(binary or too large to show)' : (t ?? ''));
+  setDiff(p, base === 'seen' ? prev.c : text(data.head), text(data.current));
+}
+
+function setDiff(p, original, modified) {
   if (!diffEditor) {
     diffEditor = monaco.editor.createDiffEditor($('diff'), {
       theme: 'vs-dark',
@@ -615,10 +632,9 @@ async function showDiff(p, base = null) {
   }
   const old = diffEditor.getModel();
   const lang = languageFor(p);
-  const text = (t) => (data.binary ? '(binary or too large to show)' : (t ?? ''));
   diffEditor.setModel({
-    original: monaco.editor.createModel(base === 'seen' ? prev.c : text(data.head), lang),
-    modified: monaco.editor.createModel(text(data.current), lang),
+    original: monaco.editor.createModel(original, lang),
+    modified: monaco.editor.createModel(modified, lang),
   });
   if (old) {
     old.original.dispose();
@@ -652,6 +668,7 @@ function switchedRepo(msg) {
   state.timeline = [];
   state.playedIds = new Set();
   state.cursor = null;
+  resetCommits();
   updateQueueLabel();
   renderTimeline();
   setTarget(msg.target);
@@ -793,14 +810,21 @@ function setupPicker() {
 }
 
 /** Switch between live playback, the diff view and the timeline (history) view. */
-function setMode(mode) {
+function setMode(mode, { pane = mode === 'diff' ? 'diff' : 'editor' } = {}) {
   state.mode = mode;
   state.token++; // interrupts whatever currently animates in the editor
   if (mode !== 'history') state.cursor = null;
+  if (mode !== 'commit') {
+    commits.index = -1;
+    commits.detail = null;
+    commits.fileIdx = -1;
+    commits.instant = false;
+  }
+  $('commitbar').hidden = mode !== 'commit';
   $('live').hidden = mode === 'live';
-  $('diff').hidden = mode !== 'diff';
-  $('editor').hidden = mode === 'diff';
-  if (mode !== 'diff') editor?.layout();
+  $('diff').hidden = pane !== 'diff';
+  $('editor').hidden = pane === 'diff';
+  if (pane !== 'diff') editor?.layout();
   updateQueueLabel();
   renderTimeline();
 }
@@ -812,7 +836,7 @@ function backToLive() {
   markActive(shown && shown.uri.scheme === 'file' ? shown.uri.path.slice(1) : null);
   setNowPlaying(
     state.paused
-      ? `❚❚ Paused — ${state.queue.length} waiting · Space to resume, → to step`
+      ? `${icon('pause')} Paused — ${state.queue.length} waiting · Space to resume, → to step`
       : state.queue.length
         ? 'Resuming…'
         : 'Waiting for the assistant to edit something…',
@@ -862,11 +886,18 @@ function renderTimeline() {
     el.dataset.index = String(index);
     if (item.type === 'marker') {
       el.className = 'tl-marker';
-      el.textContent =
+      const sha = item.head?.sha;
+      if (sha) {
+        el.dataset.sha = sha;
+        el.addEventListener('click', () => openCommit(sha));
+        if (state.mode === 'commit' && commits.detail?.sha.startsWith(sha))
+          el.classList.add('selected');
+      }
+      el.innerHTML =
         item.reason === 'branch'
-          ? `⎇ ${item.head.branch ?? item.head.sha}`
-          : `● ${item.head.sha ?? ''}`;
-      el.title = `${item.reason === 'branch' ? 'Switched to' : 'HEAD moved to'} ${describeHead(item.head)} at ${hhmmss(item.ts)}`;
+          ? `${icon('git-branch')} ${esc(item.head.branch ?? item.head.sha ?? '')}`
+          : `${icon('git-commit-horizontal')} ${esc(sha ?? '')}`;
+      el.title = `${item.reason === 'branch' ? 'Switched to' : 'HEAD moved to'} ${describeHead(item.head)} at ${hhmmss(item.ts)}${sha ? ' — click to view this commit' : ''}`;
     } else {
       el.className = 'tl-edit';
       el.dataset.id = String(item.id);
@@ -885,8 +916,8 @@ function renderTimeline() {
     }
     strip.append(el);
   });
-  $('timeline-count').textContent =
-    `${state.timeline.filter((i) => i.type === 'edit').length} edits`;
+  const edits = state.timeline.filter((i) => i.type === 'edit').length;
+  $('timeline-count').textContent = `${edits} edit${edits === 1 ? '' : 's'}`;
   const focus =
     strip.querySelector('.selected') ?? strip.querySelector('.playing') ?? strip.lastElementChild;
   focus?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -943,9 +974,16 @@ function togglePause() {
   updateQueueLabel();
   if (state.mode === 'live') {
     if (state.paused && !state.playing) {
-      setNowPlaying(`❚❚ Paused — new edits wait in the queue · Space to resume, → to step`);
+      setNowPlaying(
+        `${icon('pause')} Paused — new edits wait in the queue · Space to resume, → to step`,
+      );
     }
-    if (!state.paused) pump();
+    if (!state.paused) {
+      if (!state.playing && !state.queue.length) {
+        setNowPlaying('Waiting for the assistant to edit something…');
+      }
+      pump();
+    }
   }
 }
 
@@ -1017,6 +1055,239 @@ function markAllSeen() {
   renderFiles();
 }
 
+// ------------------------------------------------------------------ commit browser
+
+/** Huge commits skip the typing animation entirely (per-file limits still apply below). */
+const COMMIT_INSTANT_FILES = 40;
+const COMMIT_INSTANT_LINES = 2000;
+const COMMITS_PAGE = 50;
+const commits = {
+  list: [], // first-parent history of HEAD, newest first (loaded page by page)
+  more: true,
+  loaded: false,
+  index: -1, // position of the shown commit in `list`
+  detail: null, // GET /api/commit/:sha
+  fileIdx: -1,
+  instant: false,
+};
+
+function resetCommits() {
+  Object.assign(commits, { list: [], more: true, loaded: false });
+  if (state.mode === 'commit') setMode('live');
+}
+
+async function loadCommitPage() {
+  const last = commits.loaded ? commits.list.at(-1) : null;
+  if (commits.loaded && (!commits.more || !last)) return false;
+  const q = new URLSearchParams({ limit: String(COMMITS_PAGE) });
+  if (last) q.set('before', last.sha);
+  const res = await fetch(`/api/commits?${q}`);
+  if (!res.ok) return false;
+  const data = await res.json();
+  if (!commits.loaded) commits.list = [];
+  commits.list.push(...data.commits);
+  commits.more = data.more;
+  commits.loaded = true;
+  return data.commits.length > 0;
+}
+
+function relTime(ms) {
+  const s = Math.round((Date.now() - ms) / 1000);
+  const units = [
+    ['year', 31_536_000],
+    ['month', 2_592_000],
+    ['week', 604_800],
+    ['day', 86_400],
+    ['hour', 3600],
+    ['minute', 60],
+  ];
+  for (const [name, secs] of units) {
+    const n = Math.floor(s / secs);
+    if (n >= 1) return `${n} ${name}${n === 1 ? '' : 's'} ago`;
+  }
+  return 'just now';
+}
+
+const FILE_ICONS = {
+  added: 'file-plus',
+  deleted: 'file-minus',
+  renamed: 'file-symlink',
+  copied: 'files',
+  modified: 'file-pen',
+  typechange: 'file-pen',
+};
+
+/** Index of the shown commit in the (possibly reloaded) list, -1 if not on this branch. */
+const shownIndex = () =>
+  commits.detail ? commits.list.findIndex((c) => c.sha === commits.detail.sha) : -1;
+
+/** [ / Shift+←: older commit; ] / Shift+→: newer (from the newest commit: back to live). */
+async function commitStep(dir) {
+  if (!editor) return;
+  if (!commits.loaded) await loadCommitPage();
+  if (state.mode !== 'commit') {
+    if (dir < 0 && commits.list.length) showCommit(0);
+    return;
+  }
+  const i = shownIndex();
+  if (dir > 0) {
+    if (i <= 0) backToLive();
+    else showCommit(i - 1);
+    return;
+  }
+  if (i < 0) return;
+  if (i + 1 >= commits.list.length) await loadCommitPage();
+  if (i + 1 < commits.list.length) showCommit(i + 1);
+  else setCommitNote('This is the first commit of the branch');
+}
+
+/** Jump to a commit by (short) sha, e.g. from a timeline marker. */
+async function openCommit(sha) {
+  if (!editor) return;
+  if (!commits.loaded) await loadCommitPage();
+  let i = commits.list.findIndex((c) => c.sha.startsWith(sha));
+  for (let pages = 0; i < 0 && commits.more && pages < 10; pages++) {
+    if (!(await loadCommitPage())) break;
+    i = commits.list.findIndex((c) => c.sha.startsWith(sha));
+  }
+  if (i >= 0) return showCommit(i);
+  // Not on the current branch's first-parent line (e.g. an old branch's HEAD): show it alone.
+  const res = await fetch(`/api/commit/${encodeURIComponent(sha)}`);
+  if (!res.ok) {
+    setNowPlaying(`Commit <b>${esc(sha)}</b> is not in this repository any more`);
+    return;
+  }
+  const detail = await res.json();
+  enterCommit(detail, `not on ${state.head?.branch ?? 'this branch'}`);
+}
+
+async function showCommit(index) {
+  const meta = commits.list[index];
+  if (!meta) return;
+  setMode('commit');
+  commits.index = index;
+  const token = state.token;
+  setNowPlaying(`${icon('git-commit-horizontal')} Loading <b>${esc(meta.short)}</b>…`);
+  const res = await fetch(`/api/commit/${meta.sha}`);
+  if (token !== state.token) return;
+  if (!res.ok) return setNowPlaying(`Could not load commit <b>${esc(meta.short)}</b>`);
+  enterCommit(await res.json(), index === 0 ? 'HEAD' : `HEAD~${index}`, token);
+}
+
+function enterCommit(detail, where, token = null) {
+  if (token === null) {
+    setMode('commit');
+    token = state.token;
+  }
+  commits.detail = detail;
+  commits.fileIdx = -1;
+  const lines = detail.files.reduce((n, f) => n + f.plus + f.minus, 0);
+  commits.instant =
+    detail.truncated || detail.files.length > COMMIT_INSTANT_FILES || lines > COMMIT_INSTANT_LINES;
+  renderCommitBar(where);
+  renderTimeline();
+  playCommit(0);
+}
+
+function renderCommitBar(where) {
+  const d = commits.detail;
+  $('cb-sha').textContent = d.short;
+  $('cb-sha').title = d.sha;
+  $('cb-subject').textContent = d.subject || '(no message)';
+  $('cb-subject').title = d.body ? `${d.subject}\n\n${d.body}` : d.subject;
+  const merge = d.parents.length > 1 ? ` · ${icon('git-merge')} merge (vs first parent)` : '';
+  const root = d.parents.length === 0 ? ' · root commit' : '';
+  $('cb-meta').innerHTML =
+    `${icon('user')} ${esc(d.author)} · <span title="${esc(new Date(d.date).toLocaleString())}">${relTime(d.date)}</span> · ${esc(where)}${merge}${root}`;
+  const box = $('cb-files');
+  box.textContent = '';
+  d.files.forEach((f, i) => {
+    const el = document.createElement('div');
+    el.className = `cb-file st-${f.status}`;
+    el.dataset.index = String(i);
+    el.innerHTML = `${icon(FILE_ICONS[f.status] ?? 'file')}<span class="cb-name"></span><span class="cb-stat">${
+      f.binary
+        ? 'bin'
+        : `<span class="plus">+${f.plus}</span><span class="minus">−${f.minus}</span>`
+    }</span>`;
+    el.querySelector('.cb-name').textContent = baseName(f.path);
+    el.title = `${f.oldPath ? `${f.oldPath} → ` : ''}${f.path} (${f.status}) — click for its diff`;
+    el.addEventListener('click', () => showCommitFile(i));
+    box.append(el);
+  });
+  if (d.truncated) {
+    const more = document.createElement('span');
+    more.className = 'muted';
+    more.textContent = `… first ${d.files.length} files shown`;
+    box.append(more);
+  }
+  if (!d.files.length) box.innerHTML = '<span class="muted">No file changes (empty commit)</span>';
+  $('cb-older').disabled = d.parents.length === 0;
+}
+
+function markCommitFile(i, cls) {
+  for (const el of $('cb-files').querySelectorAll('.cb-file')) {
+    el.classList.toggle(cls, Number(el.dataset.index) === i);
+  }
+  $('cb-files').querySelector(`.${cls}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function setCommitNote(text) {
+  setNowPlaying(
+    `${icon('git-commit-horizontal')} <b>${esc(commits.detail?.short ?? '')}</b> · <span class="note">${esc(text)}</span>`,
+  );
+}
+
+/** Replay the commit's diff (first parent → commit) file by file with the live engine. */
+async function playCommit(from = 0) {
+  const d = commits.detail;
+  if (!d) return;
+  setMode('commit', { pane: 'editor' });
+  $('commitbar').hidden = false;
+  commits.detail = d; // setMode keeps the detail in commit mode; be explicit anyway
+  const token = state.token;
+  const valid = () => token === state.token;
+  for (let i = from; i < d.files.length; i++) {
+    const f = d.files[i];
+    commits.fileIdx = i;
+    markCommitFile(i, 'playing');
+    const res = await fetch(`/api/commit/${d.sha}/file?path=${encodeURIComponent(f.path)}`);
+    if (!valid()) return;
+    if (!res.ok) continue;
+    const ev = await res.json();
+    const ok = await play(ev, valid, {
+      label: `${icon('git-commit-horizontal')} ${esc(d.short)} · ${i + 1}/${d.files.length} ·`,
+    });
+    if (!ok) return;
+  }
+  if (!valid()) return;
+  markCommitFile(-1, 'playing');
+  setCommitNote(
+    d.files.length
+      ? 'played · click a file for its diff · [ ] older/newer · Esc for live'
+      : 'empty commit · [ ] older/newer · Esc for live',
+  );
+}
+
+async function showCommitFile(i) {
+  const d = commits.detail;
+  const f = d?.files[i];
+  if (!f) return;
+  setMode('commit', { pane: 'diff' });
+  const token = state.token;
+  commits.fileIdx = i;
+  markCommitFile(i, 'playing');
+  const res = await fetch(`/api/commit/${d.sha}/file?path=${encodeURIComponent(f.path)}`);
+  if (token !== state.token || !res.ok) return;
+  const ev = await res.json();
+  const text = (t) => (ev.binary ? '(binary or too large to show)' : t);
+  setDiff(f.path, text(ev.before), text(ev.after));
+  setNowPlaying(
+    `${icon('file-diff')} <b>${esc(d.short)}</b> · <b>${esc(f.path)}</b>${f.oldPath ? ` <span class="muted">(from ${esc(f.oldPath)})</span>` : ''} <button class="seg" id="cb-replay">${icon('play')} play commit</button> <span class="muted">— Esc for live</span>`,
+  );
+  $('cb-replay').addEventListener('click', () => playCommit(0));
+}
+
 // ------------------------------------------------------------------ boot
 
 setupSpeed();
@@ -1025,6 +1296,11 @@ $('pause').addEventListener('click', togglePause);
 $('prev').addEventListener('click', () => step(-1));
 $('next').addEventListener('click', () => step(1));
 $('mark-seen').addEventListener('click', markAllSeen);
+$('commit-prev').addEventListener('click', () => commitStep(-1));
+$('commit-next').addEventListener('click', () => commitStep(1));
+$('cb-older').addEventListener('click', () => commitStep(-1));
+$('cb-newer').addEventListener('click', () => commitStep(1));
+$('cb-play').addEventListener('click', () => playCommit(0));
 setupPicker();
 // Capture phase, so the (read-only) editor can't swallow the shortcuts.
 window.addEventListener(
@@ -1042,7 +1318,9 @@ window.addEventListener(
       return;
     }
     if (typing || !$('picker').hidden || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.key === ' ') togglePause();
+    if (e.key === '[' || (e.shiftKey && e.key === 'ArrowLeft')) commitStep(-1);
+    else if (e.key === ']' || (e.shiftKey && e.key === 'ArrowRight')) commitStep(1);
+    else if (e.key === ' ') togglePause();
     else if (e.key === 'ArrowLeft') step(-1);
     else if (e.key === 'ArrowRight') step(1);
     else return;

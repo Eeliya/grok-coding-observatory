@@ -18,16 +18,27 @@ character by character.
   get a blue ● marker (with a left accent bar for the first minute), and edited untracked files
   stay visible even when the Untracked group is collapsed. Updated live.
 - **Diff vs HEAD** – click a file to open a side-by-side Monaco diff against `HEAD`. Live playback
-  pauses (events keep queuing); press **● Live** or `Esc` to resume.
+  pauses (events keep queuing); press **Live** or `Esc` to resume.
 - **Session timeline** – a strip along the bottom lists every edit seen this session, in order,
   with file name, time and `+added −removed` lines (queued edits are dashed, the playing one is
-  underlined). Commits / `HEAD` moves (`● <sha>`) and branch switches (`⎇ <branch>`) add a marker
+  underlined). Commits / `HEAD` moves (commit icon + sha) and branch switches (branch icon + name) add a marker
   instead of wiping it; switching repos clears it. Click an edit to replay exactly that change
-  (its before → after) in the editor; **● Live** returns to live playback. The history is kept on
+  (its before → after) in the editor; **Live** returns to live playback. The history is kept on
   the server (in memory, last 500 edits / ~50 MB of content), so a page refresh doesn't lose it.
-- **Pause and step** – **❚❚** pauses live playback: new edits queue up (header shows
-  “Paused · N waiting”) and the timeline marks them pending. **‹ / ›** step through the timeline
-  one edit at a time; while paused in live mode, **›** plays exactly the next queued edit.
+- **Commit browser** – walk the current branch's real history (`git log --first-parent HEAD`,
+  newest first) with the « / » buttons next to the commit icon in the timeline bar (or `[` / `]`,
+  `Shift+←` / `Shift+→`). « goes to older commits (from live: the `HEAD` commit), » to newer ones,
+  and » on the newest commit returns to live. The commit view shows sha, subject, author, relative
+  date and position (`HEAD~n`) on top plus the files it changed (+/−, binary marked); the diff
+  (first parent → commit) then plays file by file with the normal playback engine and speed.
+  Click a file for its side-by-side diff, **Play** to replay the commit. Root commits diff
+  against the empty tree, merge commits against their first parent, binary files are shown (not
+  typed), large/generated files use the instant policy, and huge commits (> 40 files or > 2000
+  changed lines) are shown instantly. Commit and branch markers in the session timeline are
+  clickable and open that commit (commits that are not on the current branch open on their own).
+- **Pause and step** – the pause button pauses live playback: new edits queue up (header shows
+  “Paused · N waiting”) and the timeline marks them pending. The ‹ / › buttons step through the timeline
+  one edit at a time; while paused in live mode, › plays exactly the next queued edit.
 - **What changed since I last looked** – the browser remembers, per repo (`localStorage` key
   `observatory.seen:<repo path>`), the content hash of each changed file you have seen. A file
   counts as seen when its playback finished or you opened its diff. Files with unseen changes get
@@ -47,14 +58,15 @@ character by character.
   `public/playback-policy.js`.
 - **Speed control** – Slow / Normal / Fast (default) / Turbo / Instant, remembered in
   `localStorage`.
-- Syntax highlighting chosen by file extension, dark theme, minimal UI.
+- Syntax highlighting chosen by file extension, dark theme, minimal UI with
+  [Lucide](https://lucide.dev) icons (icon font `lucide-static@1.49.0` from jsDelivr).
 - Ignores `node_modules`, `.git`, `dist` and anything git-ignored.
 
 ## Requirements
 
 - Node.js **22.18+** (runs TypeScript natively via type stripping; no build step)
 - `git` on `PATH`; the target directory must be inside a git repository
-- Internet access in the browser (Monaco is loaded from the jsDelivr CDN)
+- Internet access in the browser (Monaco and the Lucide icon font are loaded from the jsDelivr CDN)
 
 ## Setup
 
@@ -94,17 +106,20 @@ Leave the tab open while the assistant works; edits play back automatically.
 
 Keyboard shortcuts (ignored while typing in an input):
 
-| Key     | Action                                                                        |
-| ------- | ----------------------------------------------------------------------------- |
-| `Space` | Pause / resume live playback                                                  |
-| `←`/`→` | Previous / next edit in the timeline (`→` while paused plays the next queued) |
-| `Esc`   | Close the picker → leave diff / timeline view back to live → resume if paused |
+| Key                              | Action                                                                                 |
+| -------------------------------- | -------------------------------------------------------------------------------------- |
+| `Space`                          | Pause / resume live playback                                                           |
+| `←`/`→`                          | Previous / next edit in the timeline (`→` while paused plays the next queued)          |
+| `[` / `]` or `Shift+←`/`Shift+→` | Older / newer commit of the current branch (newest → live)                             |
+| `Esc`                            | Close the picker → leave diff / timeline / commit view back to live → resume if paused |
 
 ## How it works
 
 - `src/server.ts` – Node HTTP server + `ws` WebSocket, run directly by Node (no compile step).
   Owns the current watch session and switches it live (`POST /api/target`); `src/repos.ts`
   validates paths, scans for repos and persists recent / last-used repos.
+- `src/commits.ts` – read-only first-parent history, commit details and per-file commit
+  playback events for the commit browser (shas are validated and resolved with `rev-parse`).
 - `src/session.ts` – one watched work tree: `chokidar` watcher, snapshots and HEAD tracking. On each change it reads the file, diffs it line by line (`src/hunks.ts`, using
   `diff`) against the last snapshot and broadcasts `{ type: "change", path, before, after, hunks }`.
   Changes are debounced per file (60 ms) and processed through one serial queue, so each event
@@ -115,7 +130,11 @@ Keyboard shortcuts (ignored while typing in an input):
 
 HTTP endpoints: `GET /api/files` (current repo, HEAD, changed files), `GET /api/diff?path=<repo-relative path>`
 (HEAD vs working copy, plus `currentHash`), `GET /api/history` (session timeline summaries),
-`GET /api/history/<id>` (one full recorded edit: before, after, hunks), `GET /api/repos` (recent + discovered repos), `POST /api/target`
+`GET /api/history/<id>` (one full recorded edit: before, after, hunks),
+`GET /api/commits?before=<sha>&limit=<n>` (first-parent history of HEAD, newest first, `limit` ≤ 200,
+`before` pages to older commits), `GET /api/commit/<sha>` (meta + changed files vs the first
+parent), `GET /api/commit/<sha>/file?path=<path>` (one file as a playback event; shas must be
+4–64 hex chars and resolve to a commit, else 400 / 404), `GET /api/repos` (recent + discovered repos), `POST /api/target`
 (`{"path": "..."}`, JSON only) to switch repos, WebSocket at `/ws`.
 
 ## Development

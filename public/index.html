@@ -8,13 +8,18 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%234fc1ff'/%3E%3C/svg%3E"
     />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/lucide-static@1.49.0/font/lucide.css"
+    />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
     <header>
       <span class="logo"><span class="dot" id="dot"></span> Coding Observatory</span>
       <button id="repo" class="repo-btn" title="Choose the repository to watch">
-        <span id="repo-name">Choose repo…</span> <span class="caret">▾</span>
+        <span id="repo-name">Choose repo…</span>
+        <i class="icon-chevron-down caret" aria-hidden="true"></i>
       </button>
       <span id="branch" class="branch" hidden></span>
       <span class="spacer"></span>
@@ -29,26 +34,71 @@
           <option value="instant">Instant</option>
         </select>
       </label>
-      <button id="live" hidden title="Back to live playback (Esc)">● Live</button>
+      <button id="live" hidden title="Back to live playback (Esc)">
+        <i class="icon-radio" aria-hidden="true"></i> Live
+      </button>
     </header>
     <main>
       <aside>
         <div id="unseen-bar" class="unseen-bar" hidden>
           <span class="unseen-dot"></span><span id="unseen-count"></span>
-          <button id="mark-seen" title="Mark every changed file as seen">Mark all seen</button>
+          <button id="mark-seen" title="Mark every changed file as seen">
+            <i class="icon-check-check" aria-hidden="true"></i> Mark all seen
+          </button>
         </div>
         <div id="files"></div>
         <div id="empty" class="muted empty">No changes yet — waiting for edits…</div>
       </aside>
       <section id="stage">
         <div id="nowplaying" class="muted">Waiting for the assistant to edit something…</div>
+        <div id="commitbar" class="commitbar" hidden>
+          <div class="cb-head">
+            <button id="cb-older" class="icon" title="Older commit ([ or Shift+←)">
+              <i class="icon-chevrons-left" aria-hidden="true"></i>
+            </button>
+            <i class="icon-git-commit-horizontal cb-icon" aria-hidden="true"></i>
+            <code id="cb-sha"></code>
+            <button
+              id="cb-newer"
+              class="icon"
+              title="Newer commit (] or Shift+→); from the newest: live"
+            >
+              <i class="icon-chevrons-right" aria-hidden="true"></i>
+            </button>
+            <span id="cb-subject"></span>
+            <span id="cb-meta" class="muted"></span>
+            <span class="spacer"></span>
+            <button id="cb-play" title="Play this commit again">
+              <i class="icon-play" aria-hidden="true"></i> Play
+            </button>
+          </div>
+          <div id="cb-files" class="cb-files"></div>
+        </div>
         <div id="editor"></div>
         <div id="diff" hidden></div>
         <div id="timeline" class="timeline">
           <div class="tl-controls">
-            <button id="prev" class="icon" title="Previous edit (←)">‹</button>
-            <button id="pause" class="icon" title="Pause live playback (Space)">❚❚</button>
-            <button id="next" class="icon" title="Next edit (→)">›</button>
+            <button id="commit-prev" class="icon" title="Older commit ([ or Shift+←)">
+              <i class="icon-chevrons-left" aria-hidden="true"></i>
+            </button>
+            <i
+              class="icon-git-commit-horizontal tl-commit-icon"
+              title="Commits of this branch"
+              aria-hidden="true"
+            ></i>
+            <button id="commit-next" class="icon" title="Newer commit (] or Shift+→)">
+              <i class="icon-chevrons-right" aria-hidden="true"></i>
+            </button>
+            <span class="tl-sep"></span>
+            <button id="prev" class="icon" title="Previous edit (←)">
+              <i class="icon-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button id="pause" class="icon" title="Pause live playback (Space)">
+              <i class="icon-pause" aria-hidden="true"></i>
+            </button>
+            <button id="next" class="icon" title="Next edit (→)">
+              <i class="icon-chevron-right" aria-hidden="true"></i>
+            </button>
             <span id="timeline-count" class="muted">0 edits</span>
           </div>
           <div id="timeline-items" class="tl-items"></div>
@@ -58,8 +108,10 @@
     <div id="picker" class="picker" hidden>
       <div class="picker-panel" role="dialog" aria-label="Choose repository to watch">
         <div class="picker-head">
-          <span>Watch a repository</span>
-          <button id="picker-close" class="icon" title="Close (Esc)">✕</button>
+          <span><i class="icon-folder-git-2" aria-hidden="true"></i> Watch a repository</span>
+          <button id="picker-close" class="icon" title="Close (Esc)">
+            <i class="icon-x" aria-hidden="true"></i>
+          </button>
         </div>
         <form id="picker-form" autocomplete="off">
           <input
@@ -67,7 +119,7 @@
             spellcheck="false"
             placeholder="Filter, or type an absolute path (~/… works)"
           />
-          <button type="submit">Watch</button>
+          <button type="submit"><i class="icon-eye" aria-hidden="true"></i> Watch</button>
         </form>
         <div id="picker-error" class="picker-error" hidden></div>
         <div class="picker-lists">
