@@ -54,6 +54,11 @@ picked up within about a second, no server connection needed.
 | `ts`      | no       | ISO 8601 time or Unix epoch (s or ms) of the update. Default: the file's modification time  |
 | `ttl`     | no       | Seconds a `working` status stays fresh (default `600`). Rewriting the file refreshes it     |
 
+Encoding: UTF-8 (a BOM is fine) or UTF-16, so Windows PowerShell 5's `'{…}' > file` works too.
+Only `*.json` files that don't start with `.` count, so for an atomic write create
+`grok.json.tmp` (or `.grok.json`) and `mv` it over `grok.json`. A plain overwrite is fine too: a
+file caught half-written is re-read instead of being reported.
+
 Use the same name for the file and `agent`. Several agents can report at once, each in its own
 file. Delete your file to disappear from the header. An unreadable file (bad JSON, unknown state)
 is flagged in the chip's popover; the agent's last valid status stays until the file is fixed.
@@ -67,8 +72,8 @@ d="$(git rev-parse --path-format=absolute --git-path observatory/status)" && mkd
 d="$(git rev-parse --path-format=absolute --git-path observatory/status)" && mkdir -p "$d" && echo '{"state":"done","message":"Lint clean","agent":"grok"}' > "$d/grok.json"
 ```
 
-**PowerShell** (Windows, repo inside WSL; replace the user and repo path). Use
-`[IO.File]::WriteAllText`: it writes UTF-8 without a BOM (a BOM is tolerated, but avoid it):
+**PowerShell** (Windows, repo inside WSL; replace the user and repo path). Writes through
+`\\wsl.localhost` are picked up within about a second:
 
 ```powershell
 $d = "\\wsl.localhost\Ubuntu\home\<user>\work\<repo>\.git\observatory\status"; New-Item -ItemType Directory -Force $d | Out-Null; [IO.File]::WriteAllText("$d\grok.json", '{"state":"working","message":"Running tests","agent":"grok"}')

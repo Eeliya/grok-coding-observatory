@@ -450,45 +450,76 @@ button.icon.on {
   opacity: 0.4;
   cursor: default;
 }
-/* Session timeline */
+/* Session timeline: docked on the right, oldest at the top, newest at the bottom */
 .timeline {
   flex: none;
   display: flex;
-  align-items: stretch;
-  height: 42px;
-  border-top: 1px solid var(--border);
+  flex-direction: column;
+  width: 216px;
+  min-height: 0;
+  border-left: 1px solid var(--border);
   background: var(--panel);
 }
 .tl-controls {
   flex: none;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 2px;
-  padding: 0 8px 0 6px;
-  border-right: 1px solid var(--border);
+  padding: 5px 6px 5px 8px;
+  border-bottom: 1px solid var(--border);
   font-size: 10px;
 }
+.tl-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 20px;
+}
 .tl-controls #timeline-count {
-  margin-left: 4px;
-  min-width: 44px;
+  flex: 1;
+  text-align: right;
+  margin-right: 2px;
+  font-variant-numeric: tabular-nums;
 }
 .tl-items {
   flex: 1;
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px;
+  overflow-x: hidden;
+  overflow-y: auto;
   scrollbar-width: thin;
+}
+/* Collapsed: a slim strip with expand / pause and the queue count */
+.timeline.collapsed {
+  width: 30px;
+}
+.timeline.collapsed .tl-items,
+.timeline.collapsed .tl-title,
+.timeline.collapsed #timeline-count,
+.timeline.collapsed #prev,
+.timeline.collapsed #next {
+  display: none;
+}
+.timeline.collapsed .tl-controls {
+  padding: 5px 2px;
+  align-items: center;
+  border-bottom: 0;
+}
+.timeline.collapsed .tl-row {
+  flex-direction: column;
+}
+.timeline.collapsed #queue {
+  margin: 4px 0 0;
+  writing-mode: vertical-rl;
 }
 .tl-edit {
   flex: none;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  max-width: 150px;
-  height: 32px;
+  min-height: 30px;
   padding: 0 7px;
   border: 1px solid #3c3c3c;
   border-radius: 4px;
@@ -525,7 +556,7 @@ button.icon.on {
 }
 .tl-edit.playing {
   border-color: var(--accent);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
   opacity: 1;
 }
 .tl-edit.selected {
@@ -534,8 +565,9 @@ button.icon.on {
 }
 .tl-marker {
   flex: none;
-  align-self: center;
-  padding: 1px 6px;
+  padding: 2px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border-left: 2px solid var(--accent);
   color: var(--accent);
   font:
@@ -607,6 +639,9 @@ button.icon [class^='icon-'] {
 }
 .tl-controls #queue {
   margin-left: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .tl-marker {
@@ -847,12 +882,22 @@ button.icon:disabled {
 /* Agent status chip (docs/AGENT-PROTOCOL.md) */
 .agent-status {
   position: relative;
-  min-width: 0;
+  display: flex;
+  flex: 0 100 auto; /* gives up space long before the commit subject does */
+  min-width: 40px; /* never overlaps the controls next to it */
+}
+.logo,
+.speed,
+.fontsize,
+#live {
+  flex: none;
+  white-space: nowrap;
 }
 .as-chip {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   max-width: 460px;
   padding: 2px 8px;
   border-radius: 10px;
@@ -861,12 +906,26 @@ button.icon:disabled {
 }
 .as-seg {
   display: inline-flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: 5px;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.as-seg > [class^='icon-'] {
+  flex: none;
+}
+.as-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.as-age {
+  flex: none;
+  white-space: nowrap;
 }
 .as-seg b {
   font-weight: 600;
@@ -912,9 +971,11 @@ button.icon:disabled {
   }
 }
 .as-more {
+  flex: none;
   color: var(--muted);
 }
 .as-problem {
+  flex: none;
   color: var(--deleted);
 }
 .as-pop {
@@ -972,9 +1033,6 @@ button.icon:disabled {
 .tl-marker.tl-agent {
   border-left-color: var(--added);
   color: var(--added);
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .tl-marker.tl-agent.working {
   border-left-color: var(--accent);

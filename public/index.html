@@ -98,12 +98,20 @@
         </div>
         <div id="editor"></div>
         <div id="diff" hidden></div>
-        <div id="timeline" class="timeline">
-          <div
-            class="tl-controls"
-            title="Live session: uncommitted edits seen since the server started"
-          >
+      </section>
+      <div id="timeline" class="timeline" role="complementary" aria-label="Live session timeline">
+        <div
+          class="tl-controls"
+          title="Live session: uncommitted edits seen since the server started"
+        >
+          <div class="tl-row">
             <span class="tl-title"><i class="icon-radio" aria-hidden="true"></i> Session</span>
+            <span id="timeline-count" class="muted">0 edits</span>
+            <button id="tl-collapse" class="icon" title="Collapse the session timeline">
+              <i class="icon-panel-right-close" aria-hidden="true"></i>
+            </button>
+          </div>
+          <div class="tl-row">
             <button id="prev" class="icon" title="Previous edit (←)">
               <i class="icon-chevron-left" aria-hidden="true"></i>
             </button>
@@ -113,12 +121,15 @@
             <button id="next" class="icon" title="Next edit (→)">
               <i class="icon-chevron-right" aria-hidden="true"></i>
             </button>
-            <span id="timeline-count" class="muted">0 edits</span>
             <span id="queue" class="muted"></span>
           </div>
-          <div id="timeline-items" class="tl-items"></div>
         </div>
-      </section>
+        <div
+          id="timeline-items"
+          class="tl-items"
+          title="Oldest at the top, newest at the bottom"
+        ></div>
+      </div>
     </main>
     <div id="picker" class="picker" hidden>
       <div class="picker-panel" role="dialog" aria-label="Choose repository to watch">

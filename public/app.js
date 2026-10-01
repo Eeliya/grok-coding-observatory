@@ -981,7 +981,7 @@ function renderTimeline() {
       el.className = `tl-marker tl-agent ${item.state}`;
       const ic =
         { working: 'loader', done: 'circle-check', idle: 'circle' }[item.state] ?? 'circle';
-      el.innerHTML = `${icon(ic)} ${esc(item.state === 'working' ? item.message || 'working' : [item.state, item.message].filter(Boolean).join(' · '))}`;
+      el.innerHTML = `${icon(ic)} ${item.agent && item.agent !== 'agent' ? `<b>${esc(item.agent)}</b> ` : ''}${esc(item.state === 'working' ? item.message || 'working' : [item.state, item.message].filter(Boolean).join(' · '))}`;
       el.title = `${item.agent}: ${item.state}${item.message ? ` — ${item.message}` : ''} at ${hhmmss(item.ts)}`;
     } else if (item.type === 'marker') {
       el.className = 'tl-marker';
@@ -1505,11 +1505,30 @@ window.addEventListener(
   true,
 );
 
+// Right-hand session timeline: collapsible to a slim strip, remembered.
+const TL_COLLAPSED_KEY = 'observatory.timelineCollapsed';
+function setTimelineCollapsed(collapsed) {
+  $('timeline').classList.toggle('collapsed', collapsed);
+  const btn = $('tl-collapse');
+  btn.innerHTML = icon(collapsed ? 'panel-right-open' : 'panel-right-close');
+  btn.title = collapsed ? 'Show the session timeline' : 'Collapse the session timeline';
+  btn.setAttribute('aria-expanded', String(!collapsed));
+  localStorage.setItem(TL_COLLAPSED_KEY, collapsed ? '1' : '0');
+  if (!collapsed) renderTimeline();
+}
+function setupTimelineDock() {
+  $('tl-collapse').addEventListener('click', () =>
+    setTimelineCollapsed(!$('timeline').classList.contains('collapsed')),
+  );
+  setTimelineCollapsed(localStorage.getItem(TL_COLLAPSED_KEY) === '1');
+}
+setupTimelineDock();
+
 // ------------------------------------------------------------------ agent status
 // Agents report working/done/idle via files in the repo's git dir (docs/AGENT-PROTOCOL.md).
 
 let baseTitle = document.title;
-const agentStatus = { agents: [], problems: [], log: [], offset: 0 };
+const agentStatus = { agents: [], problems: [], log: [], offset: 0, staleTimer: 0 };
 
 function fmtAgo(ms) {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -1529,14 +1548,17 @@ function agentView(a) {
 }
 
 function agentLabel(v, withName) {
+  // The text part ellipsizes; the age stays readable.
   const who = withName ? `<b>${esc(v.agent)}</b> ` : '';
   const msg = v.message ? ` · ${esc(v.message)}` : '';
+  const text = (t) => `<span class="as-text">${who}${t}</span>`;
+  const age = (t) => `<span class="as-age">· ${t}</span>`;
   if (v.view === 'working')
-    return `<span class="as-pulse"></span>${who}${esc(v.message || 'Working…')}`;
+    return `<span class="as-pulse"></span>${text(esc(v.message || 'Working…'))}`;
   if (v.view === 'stale')
-    return `${icon('triangle-alert')}${who}Possibly stalled${msg} · last seen ${v.ago}`;
-  if (v.view === 'done') return `${icon('circle-check')}${who}Done${msg} · ${v.ago}`;
-  return `<span class="as-idle"></span>${who}Idle`;
+    return `${icon('triangle-alert')}${text(`Possibly stalled${msg}`)}${age(`last seen ${v.ago}`)}`;
+  if (v.view === 'done') return `${icon('circle-check')}${text(`Done${msg}`)}${age(v.ago)}`;
+  return `<span class="as-idle"></span>${text('Idle')}`;
 }
 
 function setAgentStatus(msg) {
@@ -1576,6 +1598,14 @@ function renderAgentStatus() {
         )
         .join('\n') + '\nClick for recent activity'
     : 'Agent status problems — click for details';
+  // Flip to "possibly stalled" right when the next working status runs out, not on the next tick.
+  clearTimeout(agentStatus.staleTimer);
+  const now = Date.now() + agentStatus.offset;
+  const due = views
+    .filter((v) => v.view === 'working')
+    .map((v) => v.ts + v.ttl * 1000 - now)
+    .filter((ms) => ms >= 0 && ms < 2 ** 31 - 1);
+  if (due.length) agentStatus.staleTimer = setTimeout(renderAgentStatus, Math.min(...due) + 50);
   const top = views[0]?.view;
   const prefix = { working: '⏳ ', stale: '⚠ ', done: '✓ ' }[top] ?? '';
   document.title = prefix + baseTitle;
@@ -1617,7 +1647,7 @@ function setupAgentStatus() {
   document.addEventListener('click', (e) => {
     if (!$('as-pop').hidden && !$('agent-status').contains(e.target)) toggleStatusPop(false);
   });
-  setInterval(renderAgentStatus, 15000); // ages and staleness move on without new messages
+  setInterval(renderAgentStatus, 5000); // "2m ago" ages move on without new messages
 }
 
 require.config({ paths: { vs: `${MONACO_BASE}/vs` } });

@@ -14,6 +14,7 @@ import {
   parseStatus,
   statusDir,
   writeStatus,
+  decodeStatusFile,
   type StatusLogEntry,
 } from '../src/status.ts';
 
@@ -297,4 +298,102 @@ test('writeStatus and the CLI write the documented file', async () => {
   execFileSync(process.execPath, [CLI, 'done', '--agent=cli', '--repo', repo], { cwd: tmp });
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).state, 'done');
   assert.throws(() => execFileSync(process.execPath, [CLI, 'busy'], { cwd: repo, stdio: 'pipe' }));
+});
+
+test('decodeStatusFile: UTF-8 (BOM or not) and UTF-16 from Windows PowerShell 5', () => {
+  const json = '{"state":"done","message":"héllo"}';
+  assert.equal(decodeStatusFile(Buffer.from(json)), json);
+  const le = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(json + '\r\n', 'utf16le')]);
+  assert.equal(parseStatus(decodeStatusFile(le), 'ps', 1).message, 'héllo');
+  const be = Buffer.from(Buffer.from(json, 'utf16le')).swap16();
+  assert.equal(decodeStatusFile(Buffer.concat([Buffer.from([0xfe, 0xff]), be])), json);
+  assert.equal(decodeStatusFile(Buffer.from(json, 'utf16le')), json, 'UTF-16LE without BOM');
+  const bom8 = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(json)]);
+  assert.equal(parseStatus(decodeStatusFile(bom8), 'x', 1).state, 'done');
+  const multi = JSON.stringify({ state: 'working', message: 'a\n  b\tc ' });
+  assert.equal(parseStatus(multi, 'x', 1).message, 'a b c');
+});
+
+test('StatusWatcher: atomic renames, dotfile temps, half-written files and deletes', async () => {
+  const dir = path.join(tmp, 'watch-real');
+  fs.mkdirSync(dir, { recursive: true });
+  const w = new StatusWatcher(dir, () => {});
+  await w.start();
+  let sawProblem = false;
+  const spy = setInterval(() => (sawProblem ||= w.problems().length > 0), 20);
+  try {
+    // write a temp file, then mv over the target (what careful agents do)
+    fs.writeFileSync(path.join(dir, '.grok.json'), '{"state":"working","message":"tmp"}');
+    fs.writeFileSync(path.join(dir, 'grok.json.tmp'), '{"state":"working","message":"step 1"}');
+    fs.renameSync(path.join(dir, 'grok.json.tmp'), path.join(dir, 'grok.json'));
+    await until(() => w.agents().find((a) => a.agent === 'grok')?.message === 'step 1', 'rename 1');
+    assert.deepEqual(
+      w.agents().map((a) => a.agent),
+      ['grok'],
+      'dotfiles and .tmp files are not agents',
+    );
+    // Same size and (possibly) same mtime as before: the new inode still counts as a change.
+    const t = fs.statSync(path.join(dir, 'grok.json')).mtime;
+    fs.writeFileSync(path.join(dir, 'grok.json.tmp'), '{"state":"working","message":"step 2"}');
+    fs.utimesSync(path.join(dir, 'grok.json.tmp'), t, t);
+    fs.renameSync(path.join(dir, 'grok.json.tmp'), path.join(dir, 'grok.json'));
+    await until(() => w.agents()[0]?.message === 'step 2', 'rename 2 with identical size/mtime');
+    // `echo > file` truncates, then writes: the empty/partial state is not reported.
+    fs.writeFileSync(path.join(dir, 'grok.json'), '');
+    await sleep(300);
+    fs.writeFileSync(path.join(dir, 'grok.json'), '{"state":"done",');
+    await sleep(300);
+    fs.writeFileSync(path.join(dir, 'grok.json'), '{"state":"done","message":"fin"}');
+    await until(() => w.agents()[0]?.state === 'done', 'done after partial writes');
+    await sleep(1200);
+    assert.equal(sawProblem, false, 'no problem flashed for a write in progress');
+    // Deleting the file removes the agent.
+    fs.rmSync(path.join(dir, 'grok.json'));
+    await until(() => w.agents().length === 0, 'delete clears');
+    // A restarted watcher (server restart) picks up existing files as its baseline.
+    fs.writeFileSync(path.join(dir, 'z.json'), '{"state":"working","message":"still here"}');
+    const w2 = new StatusWatcher(dir, () => {});
+    await w2.start();
+    assert.equal(w2.agents()[0]?.message, 'still here');
+    w2.close();
+  } finally {
+    clearInterval(spy);
+    w.close();
+  }
+});
+
+test('server: a UTF-16 file (PowerShell 5 `>`) works; switching repos shows its statuses', async () => {
+  const dir = await statusDir(repo);
+  const json = '{"state":"working","message":"from PowerShell","agent":"ps"}\r\n';
+  fs.writeFileSync(
+    path.join(dir, 'ps.json'),
+    Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(json, 'utf16le')]),
+  );
+  const ps = await until(() => agentIn(lastStatus(), 'ps'), 'UTF-16 status');
+  assert.equal(ps.message, 'from PowerShell');
+  assert.equal(lastStatus().problems.length, 0);
+
+  const other = path.join(tmp, 'other-repo');
+  makeRepo(other);
+  const otherDir = await statusDir(other);
+  fs.mkdirSync(otherDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(otherDir, 'elsewhere.json'),
+    '{"state":"done","message":"other repo"}',
+  );
+  const r = await fetch(base + '/api/target', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ path: other }),
+  });
+  assert.equal(r.status, 200);
+  const st = await until(() => {
+    const m = lastStatus();
+    return m && agentIn(m, 'elsewhere') ? m : null;
+  }, 'status of the new repo');
+  assert.equal(agentIn(st, 'ps'), undefined, 'the old repo agents are gone');
+  assert.equal(st.dir, otherDir);
+  // And its folder is watched from now on.
+  fs.writeFileSync(path.join(otherDir, 'elsewhere.json'), '{"state":"working","message":"again"}');
+  await until(() => agentIn(lastStatus(), 'elsewhere')?.state === 'working', 'new repo watched');
 });

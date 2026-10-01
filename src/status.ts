@@ -10,6 +10,8 @@ export type StatusState = (typeof STATUS_STATES)[number];
 export const DEFAULT_TTL_S = 600;
 export const MAX_MESSAGE = 200;
 const MAX_FILE_BYTES = 16 * 1024;
+/** A file that fails to parse this soon after a write may still be mid-write: retry first. */
+const SETTLE_MS = 1000;
 const POLL_MS = 1000;
 const LOG_MAX = 50;
 export const AGENT_RE = /^[A-Za-z0-9._-]{1,64}$/;
@@ -76,10 +78,30 @@ export function parseStatus(text: string, fallbackAgent: string, mtimeMs: number
   return {
     agent,
     state: state as StatusState,
-    message: typeof d.message === 'string' ? d.message.trim().slice(0, MAX_MESSAGE) : '',
+    message:
+      typeof d.message === 'string'
+        ? d.message.replace(/\s+/g, ' ').trim().slice(0, MAX_MESSAGE)
+        : '',
     ts: parseTs(d.ts) ?? mtimeMs,
     ttl: Number.isFinite(ttl) && ttl > 0 ? Math.min(ttl, 7 * 24 * 3600) : DEFAULT_TTL_S,
   };
+}
+
+/**
+ * Decode a status file: UTF-8 (with or without BOM) or UTF-16. Windows PowerShell 5's
+ * `'{…}' > file` writes UTF-16LE with a BOM.
+ */
+export function decodeStatusFile(buf: Buffer): string {
+  if (buf[0] === 0xff && buf[1] === 0xfe) return buf.subarray(2).toString('utf16le');
+  if (buf[0] === 0xfe && buf[1] === 0xff) {
+    const be = buf.subarray(2, 2 + ((buf.length - 2) & ~1));
+    return Buffer.from(be).swap16().toString('utf16le');
+  }
+  // UTF-16LE without BOM: ASCII JSON starts with "{\0" (or whitespace + \0).
+  if (buf.length >= 2 && buf.length % 2 === 0 && buf[1] === 0 && buf[0] !== 0) {
+    return buf.toString('utf16le');
+  }
+  return buf.toString('utf8');
 }
 
 /** A `working` status not refreshed within its TTL is shown as possibly stalled. */
@@ -188,7 +210,10 @@ export class StatusWatcher {
   private async scan(initial: boolean) {
     let names: string[] = [];
     try {
-      names = (await fsp.readdir(this.dir)).filter((n) => n.endsWith('.json'));
+      // Dotfiles are temp files of atomic writers (e.g. `.grok.json.swp`, `.grok.json`).
+      names = (await fsp.readdir(this.dir)).filter(
+        (n) => n.endsWith('.json') && !n.startsWith('.'),
+      );
     } catch {
       names = [];
     }
@@ -211,15 +236,21 @@ export class StatusWatcher {
         continue;
       }
       if (!st.isFile()) continue;
-      const key = `${st.size}:${st.mtimeMs}`;
+      // The inode changes on an atomic rename, even if size and mtime happen to match.
+      const key = `${st.ino}:${st.size}:${st.mtimeMs}`;
       const prev = this.files.get(name);
       if (prev?.key === key) continue;
       const next: FileState = { key, status: prev?.status ?? null, error: null };
       try {
         if (st.size > MAX_FILE_BYTES) throw new Error('file too large');
-        const text = await fsp.readFile(file, 'utf8');
+        const text = decodeStatusFile(await fsp.readFile(file));
         next.status = parseStatus(text, name.slice(0, -5), st.mtimeMs);
       } catch (err) {
+        // `echo … > file` truncates first: an empty or half-written file is retried on the next
+        // poll instead of flashing a problem; only one that stays broken is reported.
+        if (!initial && Math.abs(Date.now() - st.mtimeMs) < SETTLE_MS) {
+          continue;
+        }
         next.error = (err as Error).message; // keep the last good status, report the problem
       }
       this.files.set(name, next);
