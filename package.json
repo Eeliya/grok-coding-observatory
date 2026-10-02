@@ -9,9 +9,8 @@
     "grok-observatory": "bin/status.mjs"
   },
   "scripts": {
-    "prestart": "node scripts/check-node.cjs",
-    "start": "node --env-file-if-exists=.env src/server.ts",
-    "test": "node --test test/*.test.ts",
+    "start": "node scripts/node.cjs src/server.ts",
+    "test": "node scripts/node.cjs --test test/*.test.ts",
     "typecheck": "tsc",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -19,7 +18,7 @@
     "status": "node bin/status.mjs"
   },
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22.6"
   },
   "license": "MIT",
   "dependencies": {

@@ -11,7 +11,7 @@ the file system.
 
 ## Requirements
 
-- **Node.js 22.18+** (it runs TypeScript directly; `nvm use` picks the version from `.nvmrc`)
+- **Node.js 22.6+** (it runs TypeScript directly; `nvm use` picks the version from `.nvmrc`)
 - **git** on your `PATH`; the folder you watch must be inside a git work tree
 - A modern browser with internet access (Monaco and the Lucide icon font load from jsDelivr)
 
@@ -101,7 +101,7 @@ Everything is optional. Set variables in the environment or copy `.env.sample` t
   `ss -ltnp 'sport = :4477'` (then `kill <pid>`).
 - **"Not a git work tree"** – the folder must be inside a git repo (`git init` it, or pick the
   repo root). The picker shows the exact error.
-- **"needs Node.js 22.18 or newer"** – install a newer Node (`nvm install 22 && nvm use`).
+- **"needs Node.js 22.6 or newer"** – install a newer Node (`nvm install 22 && nvm use`).
 - **Edits don't show up (WSL)** – for repos on a Windows drive (`/mnt/c/…`) changes are polled,
   which is slower; move the repo into WSL (`~/…`) or force it with `WATCH_POLL=1`. On Linux with
   very large repos, raise `fs.inotify.max_user_watches`.
