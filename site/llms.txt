@@ -1,0 +1,25 @@
+# grok-coding-observatory
+
+> A free, open-source (MIT) local web app that watches the git repo an AI coding assistant (for example Grok Bot) is editing and replays every edit live in the browser, file by file: diffs against HEAD, a session timeline with replay, unseen-change dots, commit browsing with playback and an optional agent status chip.
+
+Key facts:
+
+- Requirements: Node.js 22.6+ (runs TypeScript directly, no build step), git on PATH, a modern browser with internet access (Monaco and the Lucide icon font load from jsDelivr). The watched folder must be inside a git work tree.
+- Run: `git clone https://github.com/Eeliya/grok-coding-observatory.git && cd grok-coding-observatory && npm install && npm start -- /path/to/your/repo`, then open http://localhost:4477 (`npm start` alone lets you pick a repo in the browser).
+- Local-only: the server binds to 127.0.0.1, reads the repo via git and the file system, never writes to the work tree and never takes git locks. It only creates `.git/observatory/status/` inside the git dir.
+- Windows: run it inside WSL and open http://localhost:4477 in the Windows browser.
+- Agent status: an assistant writes `{"state":"working"|"done"|"idle","message":"…","agent":"grok"}` to `<git dir>/observatory/status/<agent>.json`; the header then shows a chip per agent (working, done, possibly stalled, idle).
+- Development: `npm run check` (typecheck + prettier check + tests), `npm test`, `npm run format`. Contributions via fork, branch and pull request against `main`.
+
+## Docs
+
+- [README](https://raw.githubusercontent.com/Eeliya/grok-coding-observatory/main/README.md): overview, quick start, features, keyboard shortcuts, configuration, troubleshooting, architecture
+- [Agent status protocol](https://raw.githubusercontent.com/Eeliya/grok-coding-observatory/main/docs/AGENT-PROTOCOL.md): how an AI agent reports working/done/idle (file path, JSON schema, bash/PowerShell/Node snippets, CLI, HTTP)
+- [HTTP and WebSocket API](https://raw.githubusercontent.com/Eeliya/grok-coding-observatory/main/docs/API.md): endpoints and messages used by the page, handy for scripting
+- [Contributing](https://raw.githubusercontent.com/Eeliya/grok-coding-observatory/main/CONTRIBUTING.md): fork, branch, checks and pull requests
+
+## Optional
+
+- [Full text for LLMs](https://eeliya.github.io/grok-coding-observatory/llms-full.txt): README, agent protocol, API and contributing guide in one file
+- [Source code on GitHub](https://github.com/Eeliya/grok-coding-observatory)
+- [License (MIT)](https://raw.githubusercontent.com/Eeliya/grok-coding-observatory/main/LICENSE)

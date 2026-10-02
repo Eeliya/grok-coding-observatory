@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>grok-coding-observatory: watch AI coding edits replay live</title>
+    <meta
+      name="description"
+      content="Free, open-source local web app that watches the git repo your AI coding assistant is editing and replays every edit live in your browser: diffs, a session timeline, commit playback and an agent status chip. Node 22.6+, local-only."
+    />
+    <link rel="canonical" href="https://eeliya.github.io/grok-coding-observatory/" />
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content="Eeliya Rasta" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="alternate" type="text/plain" href="llms.txt" title="llms.txt" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="grok-coding-observatory" />
+    <meta
+      property="og:title"
+      content="grok-coding-observatory – watch your AI coding assistant's edits replay live"
+    />
+    <meta
+      property="og:description"
+      content="A local web app that replays every edit your AI coding assistant makes, file by file: live diffs, a session timeline, commit playback and an agent status chip."
+    />
+    <meta property="og:url" content="https://eeliya.github.io/grok-coding-observatory/" />
+    <meta property="og:image" content="https://eeliya.github.io/grok-coding-observatory/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="grok-coding-observatory: an edit being replayed in the editor, with the changed-files sidebar and session timeline"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="grok-coding-observatory – watch your AI coding assistant's edits replay live"
+    />
+    <meta
+      name="twitter:description"
+      content="A local web app that replays every edit your AI coding assistant makes, file by file: live diffs, a session timeline, commit playback and an agent status chip."
+    />
+    <meta name="twitter:image" content="https://eeliya.github.io/grok-coding-observatory/og.png" />
+    <meta
+      name="twitter:image:alt"
+      content="grok-coding-observatory: an edit being replayed in the editor, with the changed-files sidebar and session timeline"
+    />
+
+    <link rel="stylesheet" href="style.css" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "grok-coding-observatory",
+        "description": "A local web app that watches the git repo an AI coding assistant is editing and replays every edit live in the browser, with diffs, a session timeline with replay, commit playback and an agent status chip.",
+        "url": "https://eeliya.github.io/grok-coding-observatory/",
+        "downloadUrl": "https://github.com/Eeliya/grok-coding-observatory",
+        "installUrl": "https://github.com/Eeliya/grok-coding-observatory#quick-start",
+        "screenshot": "https://eeliya.github.io/grok-coding-observatory/img/live.png",
+        "image": "https://eeliya.github.io/grok-coding-observatory/og.png",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux, Windows (WSL)",
+        "softwareRequirements": "Node.js 22.6 or newer, git, a modern web browser",
+        "softwareVersion": "0.1.0",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "author": { "@type": "Person", "name": "Eeliya Rasta", "url": "https://github.com/Eeliya" },
+        "sameAs": ["https://github.com/Eeliya/grok-coding-observatory"]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does it send my code anywhere?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. The server binds to 127.0.0.1, reads your repo through git and the file system, and never sends your code anywhere. The page only fetches the Monaco editor and the Lucide icon font from the jsDelivr CDN."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it change my repository?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. It never writes to your work tree and never takes git locks. The only thing it creates is the agent status folder .git/observatory/status/ inside the git dir, which is never committed."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Which AI coding assistants does it work with?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Any assistant that edits files in a git work tree, for example Grok Bot. The observatory watches the files, so the assistant needs no integration. The agent status chip is optional: an assistant that follows docs/AGENT-PROTOCOL.md writes a small JSON file to report whether it is working or done."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it work on Windows?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes, run it inside WSL (Ubuntu etc.) next to your repos and open http://localhost:4477 in your Windows browser; WSL forwards localhost. Keep repos in the WSL file system for instant file events; repos under /mnt/c work too but are polled."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What do I need to run it?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Node.js 22.6 or newer (it runs TypeScript directly, no build step), git on your PATH, and a modern browser with internet access for Monaco and the icon font. The folder you watch must be inside a git work tree."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Port 4477 is already in use. What now?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Another copy is probably running, so just open the URL. Or start on another port with PORT=4478 npm start."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is it free?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. grok-coding-observatory is open source under the MIT License."
+            }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <a class="brand" href="./" aria-label="grok-coding-observatory home">
+          <img src="favicon.svg" alt="" width="28" height="28" />
+          <span>grok-coding-observatory</span>
+        </a>
+        <nav aria-label="Main">
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#how-it-works">How it works</a></li>
+            <li><a href="#quick-start">Quick start</a></li>
+            <li><a href="#faq">FAQ</a></li>
+            <li><a href="#contributing">Contribute</a></li>
+            <li>
+              <a class="gh-link" href="https://github.com/Eeliya/grok-coding-observatory">GitHub</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="wrap">
+          <p class="eyebrow">Open source · Local-only · MIT</p>
+          <h1 id="hero-title">Watch your AI coding assistant's edits replay live, file by file.</h1>
+          <p class="lead">
+            <strong>grok-coding-observatory</strong> is a small local web app. Point it at the git
+            repo your assistant (for example Grok Bot) is working in, keep the tab open beside the
+            chat, and every save shows up as a short replay: it jumps to the changed lines,
+            highlights the removed ones and types the new code.
+          </p>
+          <div class="cta">
+            <a class="btn btn-primary" href="https://github.com/Eeliya/grok-coding-observatory"
+              >View on GitHub</a
+            >
+            <a class="btn" href="#quick-start">Quick start</a>
+          </div>
+          <pre
+            class="hero-cmd"
+          ><code>git clone https://github.com/Eeliya/grok-coding-observatory.git
+cd grok-coding-observatory &amp;&amp; npm install
+npm start -- /path/to/your/repo   # open http://localhost:4477</code></pre>
+          <figure class="shot">
+            <img
+              src="img/live.png"
+              width="1280"
+              height="720"
+              alt="Live view: an edit being typed into the editor, the changed-files sidebar with unseen dots, the agent status chip in the header, and the session timeline docked on the right"
+            />
+            <figcaption>
+              The live view: an edit replaying in the editor, unseen-change dots in the sidebar, the
+              agent status chip in the header and the session timeline on the right.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="features" aria-labelledby="features-title">
+        <div class="wrap">
+          <h2 id="features-title">Features</h2>
+          <p class="section-lead">
+            Everything you need to follow along while an assistant edits your code, and nothing that
+            touches it.
+          </p>
+          <ul class="cards">
+            <li class="card">
+              <h3>Live replay</h3>
+              <p>
+                Each saved change is replayed in order, nothing is dropped. Big changes, lock files
+                and generated files appear instantly; a backlog fast-forwards. Choose the playback
+                speed from Slow to Instant.
+              </p>
+            </li>
+            <li class="card">
+              <h3>Diffs against HEAD</h3>
+              <p>
+                The sidebar lists files that differ from <code>HEAD</code>, split into Changed and
+                Untracked (git-ignored files never show). Click a file for a side-by-side diff.
+              </p>
+            </li>
+            <li class="card">
+              <h3>Unseen-change dots</h3>
+              <p>
+                An orange dot marks files that changed since you last looked.
+                <strong>Mark all seen</strong> clears them, and the diff view can show only what
+                changed <strong>since last look</strong>.
+              </p>
+            </li>
+            <li class="card">
+              <h3>Session timeline with replay</h3>
+              <p>
+                A Session bar lists this session's uncommitted edits with time and +/− lines. Click
+                one to replay exactly that edit. Commits, branch switches and agent status changes
+                show as markers. It survives a refresh.
+              </p>
+            </li>
+            <li class="card">
+              <h3>Pause and step</h3>
+              <p>
+                Pause live playback (new edits wait, with a count), then step through edits one at a
+                time. Keyboard shortcuts: <kbd>Space</kbd>, <kbd>←</kbd>/<kbd>→</kbd>,
+                <kbd>[</kbd>/<kbd>]</kbd> and <kbd>Esc</kbd>.
+              </p>
+            </li>
+            <li class="card">
+              <h3>Commit browsing and playback</h3>
+              <p>
+                Walk the current branch's history with « / ». A commit plays back file by file with
+                Play / Stop, or click a file for its diff. » on the newest commit returns to live.
+              </p>
+            </li>
+            <li class="card">
+              <h3>Agent status chip</h3>
+              <p>
+                An optional chip per agent shows <em>working</em> (pulsing dot and message),
+                <em>done</em> (✓ summary and age), <em>possibly stalled</em> or <em>idle</em>. It
+                also prefixes the tab title with ⏳ / ✓ / ⚠.
+              </p>
+            </li>
+            <li class="card">
+              <h3>Comfortable controls</h3>
+              <p>
+                A repo picker (recent repos, repos found under <code>~/work</code>, or any path), A−
+                / A+ code font size from 8 to 20&nbsp;px, and playback speed. All remembered.
+              </p>
+            </li>
+            <li class="card">
+              <h3>Local and read-only</h3>
+              <p>
+                Binds to <code>127.0.0.1</code>, reads your repo only through git and the file
+                system, never writes to your work tree and never takes git locks. No build step.
+              </p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="how-it-works" aria-labelledby="how-title">
+        <div class="wrap">
+          <h2 id="how-title">How it works</h2>
+          <ol class="steps">
+            <li>
+              <h3>Run it next to your repos</h3>
+              <p>
+                Start the observatory with <code>npm start -- /path/to/repo</code> (on Windows:
+                inside WSL). A Node.js server runs the TypeScript source directly and listens on
+                <code>http://localhost:4477</code>.
+              </p>
+            </li>
+            <li>
+              <h3>It watches git and the file system</h3>
+              <p>
+                A file watcher (chokidar) keeps a snapshot per file, tracks <code>HEAD</code> and
+                branch switches, and computes line diffs for every save. Commit history is read from
+                git, read-only.
+              </p>
+            </li>
+            <li>
+              <h3>Your browser replays each edit</h3>
+              <p>
+                Changes stream to the page over a WebSocket. The page, a single static page with the
+                Monaco editor, jumps to the changed lines, highlights what was removed and types
+                what was added.
+              </p>
+            </li>
+            <li>
+              <h3>Your assistant can report its status</h3>
+              <p>
+                Optionally, the assistant writes a small JSON file into the repo's git dir. The
+                header shows whether it is working, done or possibly stalled, even while it only
+                runs lint, tests or git.
+              </p>
+            </li>
+          </ol>
+          <figure class="shot">
+            <img
+              src="img/commit-view.png"
+              width="1280"
+              height="720"
+              loading="lazy"
+              alt="Commit view: the header shows the commit with a Stop button while its files replay, with the progress bar at 2 of 2 files"
+            />
+            <figcaption>
+              Commit view: a commit replaying file by file, with Play / Stop in the header.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="quick-start" aria-labelledby="quick-title">
+        <div class="wrap">
+          <h2 id="quick-title">Quick start</h2>
+          <p>
+            You need <strong>Node.js 22.6+</strong> (<code>nvm use</code> picks the version from
+            <code>.nvmrc</code>), <strong>git</strong> on your <code>PATH</code>, and a modern
+            browser with internet access (Monaco and the icon font load from jsDelivr). The folder
+            you watch must be inside a git work tree.
+          </p>
+          <pre><code>git clone https://github.com/Eeliya/grok-coding-observatory.git
+cd grok-coding-observatory
+npm install
+npm start                          # then pick a repo in the browser
+# or
+npm start -- /path/to/your/repo    # watch that repo right away</code></pre>
+          <p>
+            Open <a href="http://localhost:4477">http://localhost:4477</a>. The last repo you
+            watched is remembered for the next <code>npm start</code>.
+          </p>
+          <ul>
+            <li>
+              <strong>macOS / Linux:</strong> run the commands in a terminal and open the URL in any
+              browser.
+            </li>
+            <li>
+              <strong>Windows:</strong> run it inside WSL (Ubuntu etc.), next to your repos, and
+              open <code>http://localhost:4477</code> in your Windows browser (WSL forwards
+              localhost). Keep your repos in the WSL file system (<code>~/…</code>) for instant file
+              events; repos under <code>/mnt/c/…</code> work too but are polled.
+            </li>
+          </ul>
+          <p>
+            Everything else is optional: <code>PORT</code>, <code>HOST</code>,
+            <code>TARGET_DIR</code>, <code>REPOS_ROOT</code> and more can be set in the environment
+            or in a <code>.env</code> file. See the
+            <a href="https://github.com/Eeliya/grok-coding-observatory#configuration"
+              >configuration table</a
+            >
+            and
+            <a href="https://github.com/Eeliya/grok-coding-observatory#troubleshooting"
+              >troubleshooting</a
+            >
+            in the README.
+          </p>
+        </div>
+      </section>
+
+      <section id="agent-status" aria-labelledby="agent-title">
+        <div class="wrap">
+          <h2 id="agent-title">Agent status protocol</h2>
+          <p>
+            Let your assistant tell you whether it is <strong>busy or done</strong>, also while it
+            only runs lint, tests or git. Tell it:
+          </p>
+          <blockquote>
+            <p>Follow docs/AGENT-PROTOCOL.md in grok-coding-observatory to report your status.</p>
+          </blockquote>
+          <p>
+            The agent writes one JSON file per agent to
+            <code>&lt;git dir&gt;/observatory/status/&lt;agent&gt;.json</code>
+            (inside the git dir, so it is never committed). Changes are picked up within about a
+            second, no server connection needed.
+          </p>
+          <pre><code>{
+  "state": "working",
+  "message": "Running lint",
+  "agent": "grok",
+  "ts": "2026-09-30T13:40:00Z",
+  "ttl": 600
+}</code></pre>
+          <ul>
+            <li>
+              <code>state</code> (required): <code>"working"</code>, <code>"done"</code> or
+              <code>"idle"</code>.
+            </li>
+            <li>
+              <code>message</code>, <code>agent</code>, <code>ts</code> and <code>ttl</code> are
+              optional. A <em>working</em> status not refreshed within its TTL (default 10 minutes)
+              shows as <em>possibly stalled</em>.
+            </li>
+            <li>
+              Write it with plain <code>echo</code> in bash, PowerShell, Node, the bundled CLI
+              (<code>bin/status.mjs</code>) or <code>POST /api/status</code> on the running server.
+            </li>
+          </ul>
+          <p>
+            <a
+              class="btn"
+              href="https://github.com/Eeliya/grok-coding-observatory/blob/main/docs/AGENT-PROTOCOL.md"
+              >Read the full protocol</a
+            >
+          </p>
+        </div>
+      </section>
+
+      <section id="faq" aria-labelledby="faq-title">
+        <div class="wrap">
+          <h2 id="faq-title">FAQ</h2>
+          <div class="faq">
+            <details>
+              <summary><h3>Does it send my code anywhere?</h3></summary>
+              <p>
+                No. The server binds to <code>127.0.0.1</code>, reads your repo through git and the
+                file system, and never sends your code anywhere. The page only fetches the Monaco
+                editor and the Lucide icon font from the jsDelivr CDN.
+              </p>
+            </details>
+            <details>
+              <summary><h3>Does it change my repository?</h3></summary>
+              <p>
+                No. It never writes to your work tree and never takes git locks. The only thing it
+                creates is the agent status folder <code>.git/observatory/status/</code> inside the
+                git dir, which is never committed.
+              </p>
+            </details>
+            <details>
+              <summary><h3>Which AI coding assistants does it work with?</h3></summary>
+              <p>
+                Any assistant that edits files in a git work tree, for example Grok Bot. The
+                observatory watches the files, so the assistant needs no integration. The agent
+                status chip is optional: an assistant that follows
+                <code>docs/AGENT-PROTOCOL.md</code> writes a small JSON file to report whether it is
+                working or done.
+              </p>
+            </details>
+            <details>
+              <summary><h3>Does it work on Windows?</h3></summary>
+              <p>
+                Yes, run it inside WSL (Ubuntu etc.) next to your repos and open
+                <code>http://localhost:4477</code> in your Windows browser; WSL forwards localhost.
+                Keep repos in the WSL file system for instant file events; repos under
+                <code>/mnt/c</code> work too but are polled.
+              </p>
+            </details>
+            <details>
+              <summary><h3>What do I need to run it?</h3></summary>
+              <p>
+                Node.js 22.6 or newer (it runs TypeScript directly, no build step), git on your
+                <code>PATH</code>, and a modern browser with internet access for Monaco and the icon
+                font. The folder you watch must be inside a git work tree.
+              </p>
+            </details>
+            <details>
+              <summary><h3>Port 4477 is already in use. What now?</h3></summary>
+              <p>
+                Another copy is probably running, so just open the URL. Or start on another port
+                with
+                <code>PORT=4478 npm start</code>.
+              </p>
+            </details>
+            <details>
+              <summary><h3>Is it free?</h3></summary>
+              <p>Yes. grok-coding-observatory is open source under the MIT License.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="contributing" aria-labelledby="contrib-title">
+        <div class="wrap">
+          <h2 id="contrib-title">Contributing</h2>
+          <p>
+            Contributions are welcome through the usual
+            <strong>fork → branch → pull request</strong> flow. Found a bug or have an idea?
+            <a href="https://github.com/Eeliya/grok-coding-observatory/issues">Open an issue</a>.
+          </p>
+          <ol class="contrib-steps">
+            <li>
+              <a href="https://github.com/Eeliya/grok-coding-observatory/fork"
+                >Fork the repository</a
+              >
+              on GitHub, then clone your fork and create a branch:
+              <pre><code>git clone https://github.com/&lt;you&gt;/grok-coding-observatory.git
+cd grok-coding-observatory
+git checkout -b my-change</code></pre>
+            </li>
+            <li>
+              Install and run it against any git repo:
+              <pre><code>npm install
+npm start -- /path/to/a/repo</code></pre>
+            </li>
+            <li>
+              Before pushing, run the checks:
+              <pre><code>npm run check   # typecheck + prettier check + tests
+npm test        # tests only
+npm run format  # prettier --write .</code></pre>
+            </li>
+            <li>
+              Keep each change focused: one fix or feature per pull request, with tests where it
+              makes sense.
+            </li>
+            <li>
+              Push your branch and open a pull request against <code>main</code> that describes what
+              changed and why.
+            </li>
+          </ol>
+          <p>
+            Details are in
+            <a href="https://github.com/Eeliya/grok-coding-observatory/blob/main/CONTRIBUTING.md"
+              >CONTRIBUTING.md</a
+            >.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <p>
+          <strong>grok-coding-observatory</strong> by
+          <a href="https://github.com/Eeliya">Eeliya Rasta</a>. Released under the
+          <a href="https://github.com/Eeliya/grok-coding-observatory/blob/main/LICENSE"
+            >MIT License</a
+          >.
+        </p>
+        <p>
+          <a href="https://github.com/Eeliya/grok-coding-observatory">Source</a> ·
+          <a href="https://github.com/Eeliya/grok-coding-observatory/issues">Issues</a> ·
+          <a href="https://github.com/Eeliya/grok-coding-observatory/blob/main/docs/API.md">API</a>
+          ·
+          <a
+            href="https://github.com/Eeliya/grok-coding-observatory/blob/main/docs/AGENT-PROTOCOL.md"
+            >Agent protocol</a
+          >
+          ·
+          <a href="llms.txt">llms.txt</a>
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

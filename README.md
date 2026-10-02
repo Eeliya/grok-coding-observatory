@@ -2,6 +2,8 @@
 
 **Watch your AI coding assistant's (for example Grok Bot's) edits replay live in your browser, file by file.**
 
+Website: <https://eeliya.github.io/grok-coding-observatory/>
+
 ![Live view: an edit being typed into the editor, the changed-files sidebar with unseen dots, the agent status chip in the header, and the session timeline docked on the right](docs/live.png)
 
 Point it at the repo your assistant is working in, keep the tab open beside the chat, and every
@@ -108,6 +110,8 @@ Everything is optional. Set variables in the environment or copy `.env.sample` t
 - **Blank editor** – the browser needs to reach `cdn.jsdelivr.net` for Monaco.
 
 ## Development
+
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) (fork, branch, pull request).
 
 ```bash
 npm run check   # typecheck + prettier check + tests (node:test, temp git repos, real server)
