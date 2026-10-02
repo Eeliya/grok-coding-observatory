@@ -1,0 +1,48 @@
+# Builds site/ (see site/build.sh) and deploys it to GitHub Pages:
+# https://eeliya.github.io/grok-coding-observatory/
+# One-time setup: Settings → Pages → Source: GitHub Actions.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate HTML
+        run: npx --yes html-validate@9 site/index.html site/404.html
+      - name: Build site
+        run: bash site/build.sh _site
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
