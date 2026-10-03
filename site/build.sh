@@ -7,6 +7,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 out="${1:-$root/_site}"
 rm -rf "$out"
 mkdir -p "$out/img"
+out="$(cd "$out" && pwd)" # absolute, for file:// URLs
 cp -r "$root/site/." "$out/"
 rm -f "$out/build.sh" "$out/.htmlvalidate.json"
 cp "$root/docs/live.png" "$root/docs/commit-view.png" "$out/img/"
@@ -24,6 +25,9 @@ shot "file://$out/og-image.html" "$out/og.png" 1200 630
 printf '<!doctype html><html><body style="margin:0"><img src="favicon.svg" width="180" height="180" alt=""></body></html>' >"$out/icon.html"
 shot "file://$out/icon.html" "$out/apple-touch-icon.png" 180 180
 rm -f "$out/og-image.html" "$out/icon.html"
+for f in og.png apple-touch-icon.png; do
+  [ -s "$out/$f" ] || { echo "build.sh: failed to render $f" >&2; exit 1; }
+done
 
 {
   echo "# grok-coding-observatory: full documentation"
