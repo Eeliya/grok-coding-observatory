@@ -29,4 +29,4 @@ Allow: /
 User-agent: CCBot
 Allow: /
 
-Sitemap: https://eeliya.github.io/grok-coding-observatory/sitemap.xml
+Sitemap: https://observatory.eeliyarasta.com/sitemap.xml

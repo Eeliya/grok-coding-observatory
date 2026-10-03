@@ -2,7 +2,7 @@
 
 **Watch your AI coding assistant's (for example Grok Bot's) edits replay live in your browser, file by file.**
 
-Website: <https://eeliya.github.io/grok-coding-observatory/>
+Website: <https://observatory.eeliyarasta.com/>
 
 ![Live view: an edit being typed into the editor, the changed-files sidebar with unseen dots, the agent status chip in the header, and the session timeline docked on the right](docs/live.png)
 

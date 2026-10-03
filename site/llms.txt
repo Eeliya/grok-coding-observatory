@@ -20,6 +20,6 @@ Key facts:
 
 ## Optional
 
-- [Full text for LLMs](https://eeliya.github.io/grok-coding-observatory/llms-full.txt): README, agent protocol, API and contributing guide in one file
+- [Full text for LLMs](https://observatory.eeliyarasta.com/llms-full.txt): README, agent protocol, API and contributing guide in one file
 - [Source code on GitHub](https://github.com/Eeliya/grok-coding-observatory)
 - [License (MIT)](https://raw.githubusercontent.com/Eeliya/grok-coding-observatory/main/LICENSE)
