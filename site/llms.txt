@@ -5,7 +5,7 @@
 Key facts:
 
 - Requirements: Node.js 22.6+ (runs TypeScript directly, no build step), git on PATH, a modern browser with internet access (Monaco and the Lucide icon font load from jsDelivr). The watched folder must be inside a git work tree.
-- Run: `git clone https://github.com/Eeliya/grok-coding-observatory.git && cd grok-coding-observatory && npm install && npm start -- /path/to/your/repo`, then open http://localhost:4477 (`npm start` alone lets you pick a repo in the browser).
+- Run: `npx github:Eeliya/grok-coding-observatory` in the repo to watch (or `npx github:Eeliya/grok-coding-observatory /path/to/your/repo`), then open http://localhost:4477. Alternative: `git clone https://github.com/Eeliya/grok-coding-observatory.git && cd grok-coding-observatory && npm install && npm start -- /path/to/your/repo` (`npm start` alone lets you pick a repo in the browser).
 - Local-only: the server binds to 127.0.0.1, reads the repo via git and the file system, never writes to the work tree and never takes git locks. It only creates `.git/observatory/status/` inside the git dir.
 - Windows: run it inside WSL and open http://localhost:4477 in the Windows browser.
 - Agent status: an assistant writes `{"state":"working"|"done"|"idle","message":"…","agent":"grok"}` to `<git dir>/observatory/status/<agent>.json`; the header then shows a chip per agent (working, done, possibly stalled, idle).

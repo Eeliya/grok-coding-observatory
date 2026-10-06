@@ -19,6 +19,18 @@ the file system.
 
 ## Quick start
 
+In the folder of the repo your assistant is working in, run:
+
+```bash
+npx github:Eeliya/grok-coding-observatory
+```
+
+and open **<http://localhost:4477>**. That's it: no clone, no install step (npx asks once before
+downloading). To watch another folder, add its path:
+`npx github:Eeliya/grok-coding-observatory /path/to/your/repo`.
+
+Or clone it (handy if you want to hack on it):
+
 ```bash
 git clone https://github.com/Eeliya/grok-coding-observatory.git
 cd grok-coding-observatory
@@ -28,7 +40,7 @@ npm start                          # then pick a repo in the browser
 npm start -- /path/to/your/repo    # watch that repo right away
 ```
 
-Open **<http://localhost:4477>**. The last repo you watched is remembered for the next `npm start`.
+With `npm start` the last repo you watched is remembered for the next start.
 
 - **macOS / Linux:** run the commands in a terminal and open the URL in any browser.
 - **Windows:** run it **inside WSL** (Ubuntu etc.), next to your repos, and open
@@ -64,8 +76,8 @@ Shortcuts are ignored while you type in an input.
 ## Using it with Grok Bot
 
 1. Start the observatory where your repos live (on Windows: in WSL) and open <http://localhost:4477>.
-2. Pick the repo your assistant is editing (click the repo name in the header, or
-   `npm start -- ~/work/my-project`).
+2. Pick the repo your assistant is editing (click the repo name in the header, or start it with
+   `npx github:Eeliya/grok-coding-observatory ~/work/my-project`).
 3. Keep the tab open beside the chat. Each edit replays as it lands; when you come back, the dots
    and the timeline show what changed while you were away, and « walks through the commits it made.
 4. Optional: let the agent report whether it is **busy or done** (also while it only runs lint,
@@ -122,7 +134,7 @@ npm run format  # prettier --write .
 How it's built: `src/server.ts` (HTTP + WebSocket, repo switching), `src/session.ts` (chokidar
 watcher, per-file snapshots, HEAD tracking, line diffs via `src/hunks.ts`), `src/commits.ts`
 (read-only branch history), `src/repos.ts` (repo validation, recent repos), `src/status.ts` (agent
-status files) and `bin/status.mjs` (status CLI); `public/` is a single
+status files) `bin/status.mjs` (status CLI) and `bin/observatory.mjs` (the `npx` launcher); `public/` is a single
 static page (vanilla JS modules + Monaco) with the replay logic in `public/replay.js` and the
 instant-playback thresholds in `public/playback-policy.js`.
 

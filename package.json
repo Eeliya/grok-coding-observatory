@@ -6,8 +6,18 @@
   "type": "module",
   "main": "src/server.ts",
   "bin": {
+    "grok-coding-observatory": "bin/observatory.mjs",
     "grok-observatory": "bin/status.mjs"
   },
+  "files": [
+    "bin/",
+    "src/",
+    "public/",
+    "scripts/node.cjs",
+    "docs/AGENT-PROTOCOL.md",
+    "docs/API.md",
+    ".env.sample"
+  ],
   "scripts": {
     "start": "node scripts/node.cjs src/server.ts",
     "test": "node scripts/node.cjs --test test/*.test.ts",
@@ -22,6 +32,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "amaro": "^1.2.1",
     "chokidar": "^5.0.0",
     "diff": "^9.0.0",
     "ws": "^8.22.0"
