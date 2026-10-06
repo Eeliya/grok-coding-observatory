@@ -4,7 +4,7 @@
 
 Website: <https://observatory.eeliyarasta.com/>
 
-![Live view: an edit being typed into the editor, the changed-files sidebar with unseen dots, the agent status chip in the header, and the session timeline docked on the right](docs/live.png)
+![Demo: an agent edits a small project; each edit is typed into the editor live, the session timeline on the right grows, and the agent status chip goes from "Adding discount codes" to "Running tests" to "Done"](docs/demo.gif)
 
 Point it at the repo your assistant is working in, keep the tab open beside the chat, and every
 save shows up as a short replay: it jumps to the changed lines, highlights the removed ones and
@@ -59,6 +59,8 @@ With `npm start` the last repo you watched is remembered for the next start.
 | **Commits**      | The header shows the mode: **Live**, or the sha, subject and `HEAD~n` of a commit. « / » walk the current branch's history (first-parent); a commit plays back file by file with **Play / Stop**, or click a file for its diff. » on the newest commit returns to live.                                                                                                                                          |
 | **Agent status** | Optional chip in the header per agent that reports via [docs/AGENT-PROTOCOL.md](docs/AGENT-PROTOCOL.md): working (pulsing dot + message), done (✓ summary · age), possibly stalled, idle. Also prefixes the tab title (⏳ / ✓ / ⚠); click it for recent activity.                                                                                                                                                |
 | **Controls**     | Header: repo picker (recent repos, repos found under `~/work`, or any path), A− / A+ code font size (8–20 px), and playback speed (Slow … Instant). All remembered.                                                                                                                                                                                                                                              |
+
+![Live view: an edit being typed into the editor, the changed-files sidebar with unseen dots, the agent status chip in the header, and the session timeline docked on the right](docs/live.png)
 
 ![Commit view: the header shows the commit with a Stop button while its files replay, with the progress bar at 2/2 files](docs/commit-view.png)
 
@@ -130,6 +132,9 @@ npm run check   # typecheck + prettier check + tests (node:test, temp git repos,
 npm test        # tests only
 npm run format  # prettier --write .
 ```
+
+To re-record the demo GIF at the top: `npm i --no-save puppeteer-core && node scripts/record-demo.mjs`
+(needs Chrome and ffmpeg; gifski optional; writes `demo-out/`, then copy `demo.gif` to `docs/`).
 
 How it's built: `src/server.ts` (HTTP + WebSocket, repo switching), `src/session.ts` (chokidar
 watcher, per-file snapshots, HEAD tracking, line diffs via `src/hunks.ts`), `src/commits.ts`
