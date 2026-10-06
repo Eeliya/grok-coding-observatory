@@ -301,8 +301,10 @@ h3 {
   margin: 2rem 0 0;
 }
 
-.shot img {
+.shot img,
+.shot video {
   display: block;
+  height: auto;
   width: 100%;
   border-radius: var(--radius);
   border: 1px solid var(--border);

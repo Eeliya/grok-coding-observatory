@@ -11,7 +11,8 @@ mkdir -p "$out/img"
 out="$(cd "$out" && pwd)" # absolute, for file:// URLs
 cp -r "$root/site/." "$out/"
 rm -f "$out/build.sh" "$out/.htmlvalidate.json"
-cp "$root/docs/live.png" "$root/docs/commit-view.png" "$root/docs/demo.gif" "$out/img/"
+cp "$root/docs/live.png" "$root/docs/commit-view.png" "$root/docs/demo.gif" \
+  "$root/docs/demo.mp4" "$root/docs/demo-poster.webp" "$out/img/"
 
 chrome="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
 if [ -z "$chrome" ]; then

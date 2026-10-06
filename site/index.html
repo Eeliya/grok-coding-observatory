@@ -186,17 +186,41 @@
           <pre class="hero-cmd"><code># in the folder of your repo:
 npx github:Eeliya/grok-coding-observatory   # open http://localhost:4477</code></pre>
           <figure class="shot">
-            <img
-              src="img/live.png"
+            <video
+              id="demo-video"
               width="1280"
-              height="720"
-              alt="Live view: an edit being typed into the editor, the changed-files sidebar with unseen dots, the agent status chip in the header, and the session timeline docked on the right"
-            />
+              height="800"
+              muted
+              loop
+              playsinline
+              controls
+              preload="auto"
+              poster="img/demo-poster.webp"
+              aria-label="Demo: an AI agent edits a small project; each edit is typed into the editor live, the session timeline on the right grows, and the agent status chip goes from working to done"
+            >
+              <source src="img/demo.mp4" type="video/mp4" />
+              <img
+                src="img/demo.gif"
+                width="1280"
+                height="800"
+                alt="Demo: an AI agent edits a small project; each edit is typed into the editor live, the session timeline on the right grows, and the agent status chip goes from working to done"
+              />
+            </video>
             <figcaption>
-              The live view: an edit replaying in the editor, unseen-change dots in the sidebar, the
-              agent status chip in the header and the session timeline on the right.
+              A scripted agent at work: each edit replays as it lands, the Session timeline on the
+              right grows and the agent status chip goes from working to done.
             </figcaption>
           </figure>
+          <script>
+            // Autoplay the (muted) demo unless the visitor prefers reduced motion; the controls can
+            // always start or pause it.
+            if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+              document
+                .getElementById('demo-video')
+                .play()
+                .catch(() => {});
+            }
+          </script>
         </div>
       </section>
 
@@ -277,6 +301,19 @@ npx github:Eeliya/grok-coding-observatory   # open http://localhost:4477</code><
               </p>
             </li>
           </ul>
+          <figure class="shot">
+            <img
+              src="img/live.png"
+              width="1280"
+              height="720"
+              loading="lazy"
+              alt="Live view: an edit being typed into the editor, the changed-files sidebar with unseen dots, the agent status chip in the header, and the session timeline docked on the right"
+            />
+            <figcaption>
+              The live view: an edit replaying in the editor, unseen-change dots in the sidebar, the
+              agent status chip in the header and the session timeline on the right.
+            </figcaption>
+          </figure>
         </div>
       </section>
 
