@@ -167,15 +167,13 @@
     </header>
 
     <main id="main">
-      <section class="hero" aria-labelledby="hero-title">
+      <section class="hero home-hero" aria-labelledby="hero-title">
         <div class="wrap">
-          <p class="eyebrow">Open source · Local-only · MIT</p>
           <h1 id="hero-title">Watch your AI coding assistant's edits replay live, file by file.</h1>
           <p class="lead">
-            <strong>grok-coding-observatory</strong> is a small local web app. Point it at the git
-            repo your assistant (for example Grok Bot) is working in, keep the tab open beside the
-            chat, and every save shows up as a short replay: it jumps to the changed lines,
-            highlights the removed ones and types the new code.
+            <strong>grok-coding-observatory</strong> replays every save live in a local browser tab.
+            Works with Grok Bot, Claude Code, Codex, Cursor and any agent that edits files in a git
+            repo.
           </p>
           <div class="cta">
             <a class="btn btn-primary" href="https://github.com/Eeliya/grok-coding-observatory"
@@ -183,8 +181,6 @@
             >
             <a class="btn" href="#quick-start">Quick start</a>
           </div>
-          <pre class="hero-cmd"><code># in the folder of your repo:
-npx github:Eeliya/grok-coding-observatory   # open http://localhost:4477</code></pre>
           <figure class="shot">
             <video
               id="demo-video"
@@ -211,6 +207,9 @@ npx github:Eeliya/grok-coding-observatory   # open http://localhost:4477</code><
               right grows and the agent status chip goes from working to done.
             </figcaption>
           </figure>
+          <pre class="hero-cmd"><code># in the folder of your repo:
+npx github:Eeliya/grok-coding-observatory   # open http://localhost:4477</code></pre>
+          <p class="hero-note">Open source · Local-only · MIT</p>
           <script>
             // Autoplay the (muted) demo unless the visitor prefers reduced motion; the controls can
             // always start or pause it.
