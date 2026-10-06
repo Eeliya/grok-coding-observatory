@@ -433,6 +433,61 @@ blockquote p {
   margin: 0.35rem 0;
 }
 
+/* Guide pages */
+.wrap.narrow {
+  max-width: 820px;
+}
+
+.eyebrow a {
+  color: inherit;
+}
+
+.numbered li,
+.related li {
+  margin-bottom: 0.6rem;
+}
+
+.guide-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 2rem 0 0;
+}
+
+.guide-links a {
+  display: block;
+  height: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.35rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.guide-links a:hover {
+  border-color: var(--accent);
+}
+
+.guide-links strong {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.guide-links span {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
 /* 404 */
 .notfound {
   min-height: 70vh;

@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>See Codex CLI changes in real time – grok-coding-observatory</title>
+    <meta
+      name="description"
+      content="Watch OpenAI Codex CLI edit your repo live in the browser: each change replays as it lands, with a session timeline, diffs against HEAD and a status chip."
+    />
+    <link rel="canonical" href="https://observatory.eeliyarasta.com/codex-cli-live-diff/" />
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content="Eeliya Rasta" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="grok-coding-observatory" />
+    <meta property="og:title" content="See Codex CLI&#x27;s changes in real time" />
+    <meta
+      property="og:description"
+      content="Watch OpenAI Codex CLI edit your repo live in the browser: each change replays as it lands, with a session timeline, diffs against HEAD and a status chip."
+    />
+    <meta property="og:url" content="https://observatory.eeliyarasta.com/codex-cli-live-diff/" />
+    <meta property="og:image" content="https://observatory.eeliyarasta.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="grok-coding-observatory: an edit being replayed in the editor, with the changed-files sidebar and session timeline"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="See Codex CLI&#x27;s changes in real time" />
+    <meta
+      name="twitter:description"
+      content="Watch OpenAI Codex CLI edit your repo live in the browser: each change replays as it lands, with a session timeline, diffs against HEAD and a status chip."
+    />
+    <meta name="twitter:image" content="https://observatory.eeliyarasta.com/og.png" />
+
+    <link rel="stylesheet" href="/style.css" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "grok-coding-observatory",
+        "description": "A local web app that watches the git repo an AI coding agent is editing and replays every edit live in the browser, with diffs, a session timeline with replay, commit playback and an agent status chip.",
+        "url": "https://observatory.eeliyarasta.com/",
+        "downloadUrl": "https://github.com/Eeliya/grok-coding-observatory",
+        "installUrl": "https://github.com/Eeliya/grok-coding-observatory#quick-start",
+        "screenshot": "https://observatory.eeliyarasta.com/img/live.png",
+        "image": "https://observatory.eeliyarasta.com/og.png",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux, Windows (WSL)",
+        "softwareRequirements": "Node.js 22.6 or newer, git, a modern web browser",
+        "softwareVersion": "0.1.0",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "author": {
+          "@type": "Person",
+          "name": "Eeliya Rasta",
+          "url": "https://github.com/Eeliya"
+        },
+        "sameAs": ["https://github.com/Eeliya/grok-coding-observatory"]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Does it work with Codex cloud tasks?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Cloud tasks edit a copy in the cloud, so there is nothing local to watch while they run. When you apply the result to your repo (for example with codex apply), the changes appear in the observatory like any other edit."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need to change how I run Codex?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Start the observatory in the same repo and keep using Codex as usual. Nothing is installed into Codex."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it also work with Claude Code, Cursor or Aider?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. It works with any agent that edits files in a git repo, and it can show several agents' status chips at once."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is my code sent anywhere?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. The server binds to 127.0.0.1 and reads your repo through git and the file system. The page only loads the Monaco editor and an icon font from a CDN."
+            }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <a class="brand" href="/" aria-label="grok-coding-observatory home">
+          <img src="/favicon.svg" alt="" width="28" height="28" />
+          <span>grok-coding-observatory</span>
+        </a>
+        <nav aria-label="Main">
+          <ul>
+            <li><a href="/#features">Features</a></li>
+            <li><a href="/#quick-start">Quick start</a></li>
+            <li><a href="/#guides">Guides</a></li>
+            <li><a href="/#faq">FAQ</a></li>
+            <li>
+              <a class="gh-link" href="https://github.com/Eeliya/grok-coding-observatory">GitHub</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero guide-hero" aria-labelledby="page-title">
+        <div class="wrap narrow">
+          <p class="eyebrow"><a href="/">grok-coding-observatory</a> · Guide</p>
+          <h1 id="page-title">See Codex CLI&#x27;s changes in real time</h1>
+          <p class="lead">
+            Codex works through your code in the terminal and shows a diff when you ask for it.
+            grok-coding-observatory shows every change while it happens, in a browser tab you can
+            keep on a second screen.
+          </p>
+          <pre class="hero-cmd"><code># in the folder of your repo:
+npx -y github:Eeliya/grok-coding-observatory   # open http://localhost:4477</code></pre>
+          <figure class="shot">
+            <img
+              src="/img/demo.gif"
+              width="1280"
+              height="800"
+              alt="Demo: an agent edits a small project; each edit is typed into the editor live, the session timeline on the right grows, and the agent status chip goes from working to done"
+            />
+            <figcaption>
+              A scripted agent at work: each edit replays as it lands, the Session timeline grows
+              and the status chip goes from working to done.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section aria-labelledby="problem-title">
+        <div class="wrap narrow">
+          <h2 id="problem-title">From "what did it change?" to watching it change</h2>
+          <p>
+            Codex CLI's <code>/diff</code> shows the current git diff, including new files. That
+            tells you where things ended up. It doesn't show the path there: the first attempt, the
+            partial revert, the second fix. When a run goes sideways, that path is exactly what you
+            want to see, ideally while there is still time to stop it.
+          </p>
+          <p>
+            The observatory watches your repo and replays each saved change in a code editor in your
+            browser: it scrolls to the changed lines, highlights what was removed and types what was
+            added. Every edit lands in the Session timeline with its time and +/− lines, and you can
+            pause playback and step through edits one by one. Commits Codex makes appear as markers
+            and can be replayed file by file.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="steps-title">
+        <div class="wrap narrow">
+          <h2 id="steps-title">Use it with Codex in three steps</h2>
+
+          <ol class="steps">
+            <li>
+              <h3>Start it in your repo</h3>
+              <p>
+                In a terminal, in the folder where you run <code>codex</code>, run
+                <code>npx -y github:Eeliya/grok-coding-observatory</code>. You need Node.js 22.6+
+                and git. On Windows, run it inside WSL.
+              </p>
+            </li>
+            <li>
+              <h3>Open the page</h3>
+              <p>
+                Open <a href="http://localhost:4477">http://localhost:4477</a> and keep the tab next
+                to your agent, ideally on a second screen. It only listens on your own machine.
+              </p>
+            </li>
+            <li>
+              <h3>Let the agent work</h3>
+              <p>
+                Give your agent its task as usual. Every file it saves replays in the browser, and
+                the Session timeline on the right fills up.
+              </p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section aria-labelledby="status-title">
+        <div class="wrap narrow">
+          <h2 id="status-title">Let Codex report "working" and "done"</h2>
+          <p>
+            Codex reads <code>AGENTS.md</code> in your repo. Add this section and it will write a
+            status file the observatory turns into a chip in the header:
+          </p>
+          <pre><code>## Status for grok-coding-observatory
+When you start a task, before a long command (tests, build, install) and when
+you finish, run this from the repo root (use "done" and a one-line summary
+at the end):
+
+d="$(git rev-parse --path-format=absolute --git-path observatory/status)" &amp;&amp; mkdir -p "$d" &amp;&amp; echo '{"state":"working","message":"Running tests","agent":"codex"}' &gt; "$d/codex.json"</code></pre>
+          <p>
+            <strong>Sandbox note:</strong> in its default <code>workspace-write</code> sandbox,
+            Codex keeps the <code>.git</code> folder read-only, and that is where the status file
+            lives. The live diffs work regardless, because the observatory reads your files itself.
+            For the chip, add your repo's <code>.git</code> path to
+            <code>writable_roots</code> under <code>[sandbox_workspace_write]</code> in
+            <code>~/.codex/config.toml</code> (this also lets Codex run git commands that write,
+            like commit), or skip the chip.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="faq-title">
+        <div class="wrap narrow">
+          <h2 id="faq-title">FAQ</h2>
+          <div class="faq">
+            <details>
+              <summary><h3>Does it work with Codex cloud tasks?</h3></summary>
+              <p>
+                Cloud tasks edit a copy in the cloud, so there is nothing local to watch while they
+                run. When you apply the result to your repo (for example with codex apply), the
+                changes appear in the observatory like any other edit.
+              </p>
+            </details>
+            <details>
+              <summary><h3>Do I need to change how I run Codex?</h3></summary>
+              <p>
+                No. Start the observatory in the same repo and keep using Codex as usual. Nothing is
+                installed into Codex.
+              </p>
+            </details>
+            <details>
+              <summary><h3>Does it also work with Claude Code, Cursor or Aider?</h3></summary>
+              <p>
+                Yes. It works with any agent that edits files in a git repo, and it can show several
+                agents&#x27; status chips at once.
+              </p>
+            </details>
+            <details>
+              <summary><h3>Is my code sent anywhere?</h3></summary>
+              <p>
+                No. The server binds to 127.0.0.1 and reads your repo through git and the file
+                system. The page only loads the Monaco editor and an icon font from a CDN.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="more-title">
+        <div class="wrap narrow">
+          <h2 id="more-title">More guides</h2>
+          <ul class="related">
+            <li><a href="/watch-ai-coding-agent/">See what your AI agent is doing</a></li>
+            <li><a href="/claude-code-live-diff/">Claude Code live diff viewer</a></li>
+            <li><a href="/cursor-agent-changes/">Watch Cursor agent changes live</a></li>
+            <li><a href="/review-ai-generated-code/">Review AI-generated code changes</a></li>
+          </ul>
+          <p class="cta-row">
+            <a class="btn btn-primary" href="/">See all features</a>
+            <a class="btn" href="https://github.com/Eeliya/grok-coding-observatory"
+              >View on GitHub</a
+            >
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <p>
+          <strong>grok-coding-observatory</strong> by
+          <a href="https://github.com/Eeliya">Eeliya Rasta</a>. Released under the
+          <a href="https://github.com/Eeliya/grok-coding-observatory/blob/main/LICENSE"
+            >MIT License</a
+          >.
+        </p>
+        <p>
+          Guides: <a href="/watch-ai-coding-agent/">See what your AI agent is doing</a> ·
+          <a href="/claude-code-live-diff/">Claude Code live diff viewer</a> ·
+          <a href="/codex-cli-live-diff/">See Codex CLI&#x27;s changes in real time</a> ·
+          <a href="/cursor-agent-changes/">Watch Cursor agent changes live</a> ·
+          <a href="/review-ai-generated-code/">Review AI-generated code changes</a>
+        </p>
+        <p>
+          <a href="https://github.com/Eeliya/grok-coding-observatory">Source</a> ·
+          <a href="https://github.com/Eeliya/grok-coding-observatory/issues">Issues</a> ·
+          <a
+            href="https://github.com/Eeliya/grok-coding-observatory/blob/main/docs/AGENT-PROTOCOL.md"
+            >Agent protocol</a
+          >
+          ·
+          <a href="/llms.txt">llms.txt</a>
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

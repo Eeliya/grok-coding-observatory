@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Review AI-generated code changes – grok-coding-observatory</title>
+    <meta
+      name="description"
+      content="A practical workflow for reviewing code your AI agent wrote: start clean, watch each edit land, replay the odd ones, check the diff, commit what you understand."
+    />
+    <link rel="canonical" href="https://observatory.eeliyarasta.com/review-ai-generated-code/" />
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content="Eeliya Rasta" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="grok-coding-observatory" />
+    <meta property="og:title" content="How to review AI-generated code changes before you commit" />
+    <meta
+      property="og:description"
+      content="A practical workflow for reviewing code your AI agent wrote: start clean, watch each edit land, replay the odd ones, check the diff, commit what you understand."
+    />
+    <meta
+      property="og:url"
+      content="https://observatory.eeliyarasta.com/review-ai-generated-code/"
+    />
+    <meta property="og:image" content="https://observatory.eeliyarasta.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="grok-coding-observatory: an edit being replayed in the editor, with the changed-files sidebar and session timeline"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="How to review AI-generated code changes before you commit"
+    />
+    <meta
+      name="twitter:description"
+      content="A practical workflow for reviewing code your AI agent wrote: start clean, watch each edit land, replay the odd ones, check the diff, commit what you understand."
+    />
+    <meta name="twitter:image" content="https://observatory.eeliyarasta.com/og.png" />
+
+    <link rel="stylesheet" href="/style.css" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "grok-coding-observatory",
+        "description": "A local web app that watches the git repo an AI coding agent is editing and replays every edit live in the browser, with diffs, a session timeline with replay, commit playback and an agent status chip.",
+        "url": "https://observatory.eeliyarasta.com/",
+        "downloadUrl": "https://github.com/Eeliya/grok-coding-observatory",
+        "installUrl": "https://github.com/Eeliya/grok-coding-observatory#quick-start",
+        "screenshot": "https://observatory.eeliyarasta.com/img/live.png",
+        "image": "https://observatory.eeliyarasta.com/og.png",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux, Windows (WSL)",
+        "softwareRequirements": "Node.js 22.6 or newer, git, a modern web browser",
+        "softwareVersion": "0.1.0",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "author": {
+          "@type": "Person",
+          "name": "Eeliya Rasta",
+          "url": "https://github.com/Eeliya"
+        },
+        "sameAs": ["https://github.com/Eeliya/grok-coding-observatory"]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Can the observatory accept or reject changes?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. It is deliberately read-only and never writes to your work tree. Use git for that: git add -p to stage what you keep, git restore to drop the rest."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Which AI coding tools does this work with?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Any tool that edits files in a git repo on your machine, for example Claude Code, Codex CLI, Cursor, Aider or GitHub Copilot's agent mode."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it review the code for me?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No, it doesn't judge the code. It makes changes easy to see and replay so that you can review them faster."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What does it need?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Node.js 22.6 or newer, git and a modern browser. On Windows, run it inside WSL."
+            }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <a class="brand" href="/" aria-label="grok-coding-observatory home">
+          <img src="/favicon.svg" alt="" width="28" height="28" />
+          <span>grok-coding-observatory</span>
+        </a>
+        <nav aria-label="Main">
+          <ul>
+            <li><a href="/#features">Features</a></li>
+            <li><a href="/#quick-start">Quick start</a></li>
+            <li><a href="/#guides">Guides</a></li>
+            <li><a href="/#faq">FAQ</a></li>
+            <li>
+              <a class="gh-link" href="https://github.com/Eeliya/grok-coding-observatory">GitHub</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero guide-hero" aria-labelledby="page-title">
+        <div class="wrap narrow">
+          <p class="eyebrow"><a href="/">grok-coding-observatory</a> · Guide</p>
+          <h1 id="page-title">How to review AI-generated code changes before you commit</h1>
+          <p class="lead">
+            AI agents write a lot of code quickly, and reviewing a big final diff is hard. Here is a
+            simple workflow that makes it manageable, using git and the free
+            grok-coding-observatory.
+          </p>
+          <pre class="hero-cmd"><code># in the folder of your repo:
+npx -y github:Eeliya/grok-coding-observatory   # open http://localhost:4477</code></pre>
+          <figure class="shot">
+            <img
+              src="/img/demo.gif"
+              width="1280"
+              height="800"
+              alt="Demo: an agent edits a small project; each edit is typed into the editor live, the session timeline on the right grows, and the agent status chip goes from working to done"
+            />
+            <figcaption>
+              A scripted agent at work: each edit replays as it lands, the Session timeline grows
+              and the status chip goes from working to done.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section aria-labelledby="workflow-title">
+        <div class="wrap narrow">
+          <h2 id="workflow-title">A five-step review workflow</h2>
+          <ol class="numbered">
+            <li>
+              <strong>Start from a clean tree.</strong> Commit or stash your own work first, or give
+              the agent its own branch. Then everything that differs from <code>HEAD</code> is the
+              agent's work, and undoing it is one <code>git restore</code> away.
+            </li>
+            <li>
+              <strong>Watch it as it happens.</strong> Run
+              <code>npx -y github:Eeliya/grok-coding-observatory</code> in the repo and open
+              <a href="http://localhost:4477">http://localhost:4477</a>. Each saved edit replays
+              live, so you notice a wrong direction after one file instead of twenty.
+            </li>
+            <li>
+              <strong>Replay what surprised you.</strong> The Session timeline keeps every edit in
+              order. Click one to replay exactly that change, including intermediate versions the
+              final diff no longer shows.
+            </li>
+            <li>
+              <strong>Check the whole change against <code>HEAD</code>.</strong> The sidebar lists
+              every changed and untracked file; click one for a side-by-side diff. Unseen dots and
+              the <em>since last look</em> view show only what is new since you last checked.
+            </li>
+            <li>
+              <strong>Commit what you understand.</strong> Stage with <code>git add -p</code>, drop
+              the rest with <code>git restore</code>, and commit. Commits the agent made itself can
+              be replayed file by file with the « / » buttons.
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section aria-labelledby="checklist-title">
+        <div class="wrap narrow">
+          <h2 id="checklist-title">What to look for</h2>
+          <ul>
+            <li>Files outside the task: config, CI workflows, unrelated modules.</li>
+            <li>Deleted or weakened tests, skipped assertions, new <code>TODO</code>s.</li>
+            <li>New dependencies and lock file churn.</li>
+            <li>Hard-coded secrets, URLs or credentials.</li>
+            <li>Error handling that swallows errors to make a test pass.</li>
+            <li>Large rewrites where a small fix was asked for.</li>
+          </ul>
+          <p>
+            Ask the agent to report its progress too. With a few lines in <code>AGENTS.md</code> or
+            <code>CLAUDE.md</code> (see the
+            <a
+              href="https://github.com/Eeliya/grok-coding-observatory/blob/main/docs/AGENT-PROTOCOL.md"
+              >agent status protocol</a
+            >), the observatory shows what it says it is doing, like "Running tests", next to what
+            it actually changes, and markers in the timeline show when it said it was done.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="faq-title">
+        <div class="wrap narrow">
+          <h2 id="faq-title">FAQ</h2>
+          <div class="faq">
+            <details>
+              <summary><h3>Can the observatory accept or reject changes?</h3></summary>
+              <p>
+                No. It is deliberately read-only and never writes to your work tree. Use git for
+                that: git add -p to stage what you keep, git restore to drop the rest.
+              </p>
+            </details>
+            <details>
+              <summary><h3>Which AI coding tools does this work with?</h3></summary>
+              <p>
+                Any tool that edits files in a git repo on your machine, for example Claude Code,
+                Codex CLI, Cursor, Aider or GitHub Copilot&#x27;s agent mode.
+              </p>
+            </details>
+            <details>
+              <summary><h3>Does it review the code for me?</h3></summary>
+              <p>
+                No, it doesn&#x27;t judge the code. It makes changes easy to see and replay so that
+                you can review them faster.
+              </p>
+            </details>
+            <details>
+              <summary><h3>What does it need?</h3></summary>
+              <p>Node.js 22.6 or newer, git and a modern browser. On Windows, run it inside WSL.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="more-title">
+        <div class="wrap narrow">
+          <h2 id="more-title">More guides</h2>
+          <ul class="related">
+            <li><a href="/watch-ai-coding-agent/">See what your AI agent is doing</a></li>
+            <li><a href="/claude-code-live-diff/">Claude Code live diff viewer</a></li>
+            <li><a href="/codex-cli-live-diff/">See Codex CLI&#x27;s changes in real time</a></li>
+            <li><a href="/cursor-agent-changes/">Watch Cursor agent changes live</a></li>
+          </ul>
+          <p class="cta-row">
+            <a class="btn btn-primary" href="/">See all features</a>
+            <a class="btn" href="https://github.com/Eeliya/grok-coding-observatory"
+              >View on GitHub</a
+            >
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <p>
+          <strong>grok-coding-observatory</strong> by
+          <a href="https://github.com/Eeliya">Eeliya Rasta</a>. Released under the
+          <a href="https://github.com/Eeliya/grok-coding-observatory/blob/main/LICENSE"
+            >MIT License</a
+          >.
+        </p>
+        <p>
+          Guides: <a href="/watch-ai-coding-agent/">See what your AI agent is doing</a> ·
+          <a href="/claude-code-live-diff/">Claude Code live diff viewer</a> ·
+          <a href="/codex-cli-live-diff/">See Codex CLI&#x27;s changes in real time</a> ·
+          <a href="/cursor-agent-changes/">Watch Cursor agent changes live</a> ·
+          <a href="/review-ai-generated-code/">Review AI-generated code changes</a>
+        </p>
+        <p>
+          <a href="https://github.com/Eeliya/grok-coding-observatory">Source</a> ·
+          <a href="https://github.com/Eeliya/grok-coding-observatory/issues">Issues</a> ·
+          <a
+            href="https://github.com/Eeliya/grok-coding-observatory/blob/main/docs/AGENT-PROTOCOL.md"
+            >Agent protocol</a
+          >
+          ·
+          <a href="/llms.txt">llms.txt</a>
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

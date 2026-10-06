@@ -11,6 +11,14 @@ Key facts:
 - Agent status: an assistant writes `{"state":"working"|"done"|"idle","message":"…","agent":"grok"}` to `<git dir>/observatory/status/<agent>.json`; the header then shows a chip per agent (working, done, possibly stalled, idle).
 - Development: `npm run check` (typecheck + prettier check + tests), `npm test`, `npm run format`. Contributions via fork, branch and pull request against `main`.
 
+## Guides
+
+- [See what your AI coding agent is doing, live](https://observatory.eeliyarasta.com/watch-ai-coding-agent/): Follow every edit your AI coding agent makes as it happens: a free local web app that replays each change in your browser, with a timeline and status chip.
+- [A live diff viewer for Claude Code](https://observatory.eeliyarasta.com/claude-code-live-diff/): See Claude Code's file changes in real time in your browser: every edit replays as it lands, with a session timeline, diffs and a hook-driven status chip.
+- [See Codex CLI's changes in real time](https://observatory.eeliyarasta.com/codex-cli-live-diff/): Watch OpenAI Codex CLI edit your repo live in the browser: each change replays as it lands, with a session timeline, diffs against HEAD and a status chip.
+- [Watch Cursor's agent change your code, edit by edit](https://observatory.eeliyarasta.com/cursor-agent-changes/): Follow every change Cursor's agent makes in a second window: a free local app that replays each saved edit, keeps a session timeline and shows diffs.
+- [How to review AI-generated code changes before you commit](https://observatory.eeliyarasta.com/review-ai-generated-code/): A practical workflow for reviewing code your AI agent wrote: start clean, watch each edit land, replay the odd ones, check the diff, commit what you understand.
+
 ## Docs
 
 - [README](https://raw.githubusercontent.com/Eeliya/grok-coding-observatory/main/README.md): overview, quick start, features, keyboard shortcuts, configuration, troubleshooting, architecture

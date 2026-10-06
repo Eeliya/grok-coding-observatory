@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Claude Code live diff viewer – grok-coding-observatory</title>
+    <meta
+      name="description"
+      content="See Claude Code&#x27;s file changes in real time in your browser: every edit replays as it lands, with a session timeline, diffs and a hook-driven status chip."
+    />
+    <link rel="canonical" href="https://observatory.eeliyarasta.com/claude-code-live-diff/" />
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content="Eeliya Rasta" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="grok-coding-observatory" />
+    <meta property="og:title" content="A live diff viewer for Claude Code" />
+    <meta
+      property="og:description"
+      content="See Claude Code&#x27;s file changes in real time in your browser: every edit replays as it lands, with a session timeline, diffs and a hook-driven status chip."
+    />
+    <meta property="og:url" content="https://observatory.eeliyarasta.com/claude-code-live-diff/" />
+    <meta property="og:image" content="https://observatory.eeliyarasta.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="grok-coding-observatory: an edit being replayed in the editor, with the changed-files sidebar and session timeline"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="A live diff viewer for Claude Code" />
+    <meta
+      name="twitter:description"
+      content="See Claude Code&#x27;s file changes in real time in your browser: every edit replays as it lands, with a session timeline, diffs and a hook-driven status chip."
+    />
+    <meta name="twitter:image" content="https://observatory.eeliyarasta.com/og.png" />
+
+    <link rel="stylesheet" href="/style.css" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "grok-coding-observatory",
+        "description": "A local web app that watches the git repo an AI coding agent is editing and replays every edit live in the browser, with diffs, a session timeline with replay, commit playback and an agent status chip.",
+        "url": "https://observatory.eeliyarasta.com/",
+        "downloadUrl": "https://github.com/Eeliya/grok-coding-observatory",
+        "installUrl": "https://github.com/Eeliya/grok-coding-observatory#quick-start",
+        "screenshot": "https://observatory.eeliyarasta.com/img/live.png",
+        "image": "https://observatory.eeliyarasta.com/og.png",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux, Windows (WSL)",
+        "softwareRequirements": "Node.js 22.6 or newer, git, a modern web browser",
+        "softwareVersion": "0.1.0",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "author": {
+          "@type": "Person",
+          "name": "Eeliya Rasta",
+          "url": "https://github.com/Eeliya"
+        },
+        "sameAs": ["https://github.com/Eeliya/grok-coding-observatory"]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Do I need a Claude Code plugin or MCP server?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. The observatory watches your files and git, so Claude Code needs no integration. Hooks are only needed for the optional status chip."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it work with Claude Code in VS Code or the desktop app?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes, as long as Claude edits files in a git repo on your machine. The observatory doesn't care which tool saved the file. Cloud sessions show up once you pull their changes."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Will it see edits Claude makes with shell commands, not just the Edit tool?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. It watches the file system, so a change made by sed, a formatter, a code generator or Claude's Edit tool all replay the same way. Git-ignored files are left out."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can it undo Claude's changes?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No, it is read-only on purpose. Use git (git restore, git checkout -p) or Claude Code's /rewind to undo changes."
+            }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <a class="brand" href="/" aria-label="grok-coding-observatory home">
+          <img src="/favicon.svg" alt="" width="28" height="28" />
+          <span>grok-coding-observatory</span>
+        </a>
+        <nav aria-label="Main">
+          <ul>
+            <li><a href="/#features">Features</a></li>
+            <li><a href="/#quick-start">Quick start</a></li>
+            <li><a href="/#guides">Guides</a></li>
+            <li><a href="/#faq">FAQ</a></li>
+            <li>
+              <a class="gh-link" href="https://github.com/Eeliya/grok-coding-observatory">GitHub</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero guide-hero" aria-labelledby="page-title">
+        <div class="wrap narrow">
+          <p class="eyebrow"><a href="/">grok-coding-observatory</a> · Guide</p>
+          <h1 id="page-title">A live diff viewer for Claude Code</h1>
+          <p class="lead">
+            Claude Code edits your files directly. grok-coding-observatory puts those edits in a
+            browser tab next to your terminal and replays each one as it lands, so you can follow
+            along without stopping Claude.
+          </p>
+          <pre class="hero-cmd"><code># in the folder of your repo:
+npx -y github:Eeliya/grok-coding-observatory   # open http://localhost:4477</code></pre>
+          <figure class="shot">
+            <img
+              src="/img/demo.gif"
+              width="1280"
+              height="800"
+              alt="Demo: an agent edits a small project; each edit is typed into the editor live, the session timeline on the right grows, and the agent status chip goes from working to done"
+            />
+            <figcaption>
+              A scripted agent at work: each edit replays as it lands, the Session timeline grows
+              and the status chip goes from working to done.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section aria-labelledby="problem-title">
+        <div class="wrap narrow">
+          <h2 id="problem-title">Why a separate diff view?</h2>
+          <p>
+            Claude Code's <code>/diff</code> command shows what changed in your working tree, which
+            is great for a check at the end. While Claude is busy, though, you often want a calmer
+            view: one that keeps every intermediate edit, works on a second screen and doesn't
+            compete with the conversation for terminal space.
+          </p>
+          <p>
+            The observatory is that view. It watches your repo through git and the file system and
+            replays each saved change in a Monaco editor: it scrolls to the lines, marks what was
+            removed and types what was added. The Session timeline keeps every edit in order with
+            its time and +/− lines, so you can click back to the one that made you frown. A file
+            list shows everything that differs from <code>HEAD</code>, with a side-by-side diff per
+            file.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="steps-title">
+        <div class="wrap narrow">
+          <h2 id="steps-title">Use it with Claude Code in three steps</h2>
+
+          <ol class="steps">
+            <li>
+              <h3>Start it in your repo</h3>
+              <p>
+                In a terminal, in the folder where you run <code>claude</code>, run
+                <code>npx -y github:Eeliya/grok-coding-observatory</code>. You need Node.js 22.6+
+                and git. On Windows, run it inside WSL.
+              </p>
+            </li>
+            <li>
+              <h3>Open the page</h3>
+              <p>
+                Open <a href="http://localhost:4477">http://localhost:4477</a> and keep the tab next
+                to your agent, ideally on a second screen. It only listens on your own machine.
+              </p>
+            </li>
+            <li>
+              <h3>Let the agent work</h3>
+              <p>
+                Give your agent its task as usual. Every file it saves replays in the browser, and
+                the Session timeline on the right fills up. Commits Claude makes show up as markers
+                you can replay.
+              </p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section aria-labelledby="status-title">
+        <div class="wrap narrow">
+          <h2 id="status-title">Show "working" and "done" with Claude Code hooks</h2>
+          <p>
+            Claude Code can run shell commands at fixed points through
+            <a href="https://code.claude.com/docs/en/hooks">hooks</a>. Three hooks are enough to
+            drive the status chip: working when you send a prompt, a refresh after each tool call,
+            and done when Claude stops. Save this script as
+            <code>.claude/hooks/observatory-status.sh</code>:
+          </p>
+          <pre><code>#!/bin/sh
+# Report Claude Code's status to grok-coding-observatory
+d="$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --path-format=absolute --git-path observatory/status 2&gt;/dev/null)" || exit 0
+mkdir -p "$d" &amp;&amp; printf '{"state":"%s","message":"%s","agent":"claude"}\n' "$1" "$2" &gt; "$d/claude.json"</code></pre>
+          <p>
+            Then add the hooks to <code>.claude/settings.local.json</code> (or
+            <code>settings.json</code>):
+          </p>
+          <pre><code>{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command",
+      "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/observatory-status.sh working 'Working on your prompt'" }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command",
+      "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/observatory-status.sh working 'Working on your prompt'" }] }],
+    "Stop": [{ "hooks": [{ "type": "command",
+      "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/observatory-status.sh done 'Finished, your turn'" }] }]
+  }
+}</code></pre>
+          <p>
+            Prefer messages that say what Claude is doing? Skip the hooks and add the snippet from
+            the
+            <a
+              href="https://github.com/Eeliya/grok-coding-observatory/blob/main/docs/AGENT-PROTOCOL.md"
+              >agent status protocol</a
+            >
+            to your <code>CLAUDE.md</code>; Claude then writes its own "Running tests" or
+            "Refactoring the parser" updates.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="faq-title">
+        <div class="wrap narrow">
+          <h2 id="faq-title">FAQ</h2>
+          <div class="faq">
+            <details>
+              <summary><h3>Do I need a Claude Code plugin or MCP server?</h3></summary>
+              <p>
+                No. The observatory watches your files and git, so Claude Code needs no integration.
+                Hooks are only needed for the optional status chip.
+              </p>
+            </details>
+            <details>
+              <summary>
+                <h3>Does it work with Claude Code in VS Code or the desktop app?</h3>
+              </summary>
+              <p>
+                Yes, as long as Claude edits files in a git repo on your machine. The observatory
+                doesn&#x27;t care which tool saved the file. Cloud sessions show up once you pull
+                their changes.
+              </p>
+            </details>
+            <details>
+              <summary>
+                <h3>Will it see edits Claude makes with shell commands, not just the Edit tool?</h3>
+              </summary>
+              <p>
+                Yes. It watches the file system, so a change made by sed, a formatter, a code
+                generator or Claude&#x27;s Edit tool all replay the same way. Git-ignored files are
+                left out.
+              </p>
+            </details>
+            <details>
+              <summary><h3>Can it undo Claude&#x27;s changes?</h3></summary>
+              <p>
+                No, it is read-only on purpose. Use git (git restore, git checkout -p) or Claude
+                Code&#x27;s /rewind to undo changes.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="more-title">
+        <div class="wrap narrow">
+          <h2 id="more-title">More guides</h2>
+          <ul class="related">
+            <li><a href="/watch-ai-coding-agent/">See what your AI agent is doing</a></li>
+            <li><a href="/codex-cli-live-diff/">See Codex CLI&#x27;s changes in real time</a></li>
+            <li><a href="/cursor-agent-changes/">Watch Cursor agent changes live</a></li>
+            <li><a href="/review-ai-generated-code/">Review AI-generated code changes</a></li>
+          </ul>
+          <p class="cta-row">
+            <a class="btn btn-primary" href="/">See all features</a>
+            <a class="btn" href="https://github.com/Eeliya/grok-coding-observatory"
+              >View on GitHub</a
+            >
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <p>
+          <strong>grok-coding-observatory</strong> by
+          <a href="https://github.com/Eeliya">Eeliya Rasta</a>. Released under the
+          <a href="https://github.com/Eeliya/grok-coding-observatory/blob/main/LICENSE"
+            >MIT License</a
+          >.
+        </p>
+        <p>
+          Guides: <a href="/watch-ai-coding-agent/">See what your AI agent is doing</a> ·
+          <a href="/claude-code-live-diff/">Claude Code live diff viewer</a> ·
+          <a href="/codex-cli-live-diff/">See Codex CLI&#x27;s changes in real time</a> ·
+          <a href="/cursor-agent-changes/">Watch Cursor agent changes live</a> ·
+          <a href="/review-ai-generated-code/">Review AI-generated code changes</a>
+        </p>
+        <p>
+          <a href="https://github.com/Eeliya/grok-coding-observatory">Source</a> ·
+          <a href="https://github.com/Eeliya/grok-coding-observatory/issues">Issues</a> ·
+          <a
+            href="https://github.com/Eeliya/grok-coding-observatory/blob/main/docs/AGENT-PROTOCOL.md"
+            >Agent protocol</a
+          >
+          ·
+          <a href="/llms.txt">llms.txt</a>
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>
