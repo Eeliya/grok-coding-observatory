@@ -2,7 +2,7 @@
 import { computeHunks, type Hunk } from './hunks.ts';
 import { instantReason } from '../public/playback-policy.js';
 import { git, gitBuffer } from './git.ts';
-import { decode } from './session.ts';
+import { decode, isAlwaysIgnored } from './session.ts';
 
 export const COMMITS_MAX_LIMIT = 200;
 /** A commit touching more files than this lists only the first ones. */
@@ -143,12 +143,13 @@ export async function commitDetail(root: string, full: string): Promise<CommitDe
     f.plus = f.binary ? 0 : Number(plus);
     f.minus = f.binary ? 0 : Number(minus);
   }
+  const visible = files.filter((f) => !isAlwaysIgnored(f.path));
   return {
     ...meta,
     body,
     base,
-    files: files.slice(0, COMMIT_MAX_FILES),
-    truncated: files.length > COMMIT_MAX_FILES,
+    files: visible.slice(0, COMMIT_MAX_FILES),
+    truncated: visible.length > COMMIT_MAX_FILES,
   };
 }
 

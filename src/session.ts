@@ -13,7 +13,10 @@ const MAX_FILE_BYTES = 1024 * 1024;
 const HASH_MAX_BYTES = 8 * 1024 * 1024;
 const DEBOUNCE_MS = 60;
 const HEAD_POLL_MS = 2000;
-const ALWAYS_IGNORED = new Set(['node_modules', '.git', 'dist']);
+/** Path segments the UI never shows (watcher, file list, live diffs, commit browser).
+ * `observatory` is the agent-protocol dir: usually under .git/, but a work-tree copy
+ * (or future siblings like logs/) must not clutter the changed-file list or timeline. */
+const ALWAYS_IGNORED = new Set(['node_modules', '.git', 'dist', 'observatory']);
 
 export interface Content {
   text: string | null; // null = missing (or binary)
@@ -53,7 +56,9 @@ export interface ChangeEvent {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const isAlwaysIgnored = (rel: string) => rel.split('/').some((seg) => ALWAYS_IGNORED.has(seg));
+/** True when any path segment is in ALWAYS_IGNORED (node_modules, .git, dist, observatory, …). */
+export const isAlwaysIgnored = (rel: string) =>
+  rel.split('/').some((seg) => ALWAYS_IGNORED.has(seg));
 
 export function decode(buf: Buffer | null): Content {
   if (buf == null) return { text: null, binary: false };
@@ -354,7 +359,7 @@ export class Session {
 
   private schedule(abs: string) {
     const rel = this.toRel(abs);
-    if (!rel || rel.startsWith('..') || this.closed) return;
+    if (!rel || rel.startsWith('..') || this.closed || isAlwaysIgnored(rel)) return;
     clearTimeout(this.pendingTimers.get(rel));
     this.pendingTimers.set(
       rel,

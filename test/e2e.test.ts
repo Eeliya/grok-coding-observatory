@@ -114,6 +114,9 @@ test('edits stream as ordered, contiguous, replayable events', async () => {
   W('build/out.js', 'nope');
   W('node_modules/x/i.js', 'nope');
   W('dist/d.js', 'nope');
+  // Protocol dir (work-tree copy): internal agent traffic, must never surface in the UI.
+  W('observatory/status/grok.json', '{"state":"working","agent":"grok","message":"secret"}\n');
+  W('observatory/logs/run.txt', 'noise\n');
   fs.unlinkSync(path.join(repo, 'README.md'));
   for (let i = 1; i <= 5; i++) {
     W('burst.txt', Array.from({ length: i }, (_, k) => `line ${k}`).join('\n') + '\n');
@@ -122,7 +125,10 @@ test('edits stream as ordered, contiguous, replayable events', async () => {
   await sleep(1500);
 
   const paths = events.map((e) => e.path);
-  assert.ok(!paths.some((p) => /ignored\.log|build\/|node_modules|dist\//.test(p)), paths.join());
+  assert.ok(
+    !paths.some((p) => /ignored\.log|build\/|node_modules|dist\/|observatory\//.test(p)),
+    paths.join(),
+  );
   assert.ok(events.every((e, i) => i === 0 || e.id > events[i - 1].id));
 
   const aEv = events.filter((e) => e.path === 'a.js');
@@ -167,6 +173,12 @@ test('file list is categorised (changed first, then untracked) over HTTP and web
     { path: 'burst.txt', status: 'untracked', category: 'untracked', edited: true },
   ]);
   assert.deepEqual(fileLists.at(-1), api.files, 'websocket payload matches HTTP');
+  assert.ok(
+    !api.files.some(
+      (f: { path: string }) => f.path === 'observatory' || f.path.startsWith('observatory/'),
+    ),
+    'observatory/ protocol files must not appear in the changed-file list',
+  );
 });
 
 test('diff endpoint returns HEAD vs working copy', async () => {
