@@ -92,6 +92,13 @@
           <span id="np-text">Waiting for the assistant to edit something…</span>
           <span id="progress-label" class="muted"></span>
         </div>
+        <div
+          id="questions"
+          class="questions"
+          role="region"
+          aria-label="Open questions from the agent"
+          hidden
+        ></div>
         <div id="commitbar" class="commitbar" hidden>
           <span id="cb-meta" class="muted"></span>
           <div id="cb-files" class="cb-files"></div>
@@ -124,6 +131,7 @@
             <span id="queue" class="muted"></span>
           </div>
         </div>
+        <div id="plan" class="plan" role="region" aria-label="Agent plan" hidden></div>
         <div
           id="timeline-items"
           class="tl-items"

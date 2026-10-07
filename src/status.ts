@@ -9,7 +9,7 @@ export const STATUS_STATES = ['working', 'done', 'idle'] as const;
 export type StatusState = (typeof STATUS_STATES)[number];
 export const DEFAULT_TTL_S = 600;
 export const MAX_MESSAGE = 200;
-const MAX_FILE_BYTES = 16 * 1024;
+const MAX_FILE_BYTES = 64 * 1024;
 /** A file that fails to parse this soon after a write may still be mid-write: retry first. */
 const SETTLE_MS = 1000;
 const POLL_MS = 1000;
@@ -24,7 +24,52 @@ export interface AgentStatus {
   ts: number;
   /** Seconds a `working` status stays fresh without a refresh. */
   ttl: number;
+  /** Optional plan: ordered steps (absent when the agent publishes none). */
+  plan?: PlanStep[];
+  /** Id of the current step (explicit `step`, else the first `active` one). */
+  step?: string | null;
+  /** Open questions for the human (resolved ones are left out). */
+  questions?: Question[];
 }
+export const STEP_STATES = ['pending', 'active', 'done', 'skipped'] as const;
+export type StepState = (typeof STEP_STATES)[number];
+export interface PlanStep {
+  id: string;
+  title: string;
+  state: StepState;
+  note?: string;
+}
+export interface Question {
+  id: string;
+  text: string;
+  options: string[];
+  blocking: boolean;
+  /** Epoch ms when it was asked (from `asked_at`, else the status time). */
+  askedAt: number;
+}
+export const MAX_STEPS = 30;
+export const MAX_QUESTIONS = 10;
+const MAX_TITLE = 200;
+const MAX_NOTE = 300;
+const MAX_QUESTION = 500;
+const MAX_OPTIONS = 8;
+const MAX_OPTION = 120;
+/** Common synonyms agents use for step states (e.g. Claude Code's todo list). */
+const STEP_ALIASES: Record<string, StepState> = {
+  todo: 'pending',
+  open: 'pending',
+  in_progress: 'active',
+  'in-progress': 'active',
+  doing: 'active',
+  current: 'active',
+  working: 'active',
+  completed: 'done',
+  complete: 'done',
+  finished: 'done',
+  skip: 'skipped',
+  cancelled: 'skipped',
+  canceled: 'skipped',
+};
 export interface StatusProblem {
   file: string;
   error: string;
@@ -33,6 +78,12 @@ export interface StatusLogEntry {
   agent: string;
   state: StatusState;
   message: string;
+  /** Absent for a state/message change; "step" = new current step; "question" = new question. */
+  kind?: 'step' | 'question';
+  /** For kind "step": the step id; for "question": the question id. */
+  ref?: string;
+  /** For kind "question": it blocks the agent. */
+  blocking?: boolean;
   ts: number;
 }
 
@@ -75,7 +126,7 @@ export function parseStatus(text: string, fallbackAgent: string, mtimeMs: number
   let agent = typeof d.agent === 'string' && d.agent.trim() ? d.agent.trim() : fallbackAgent;
   if (!AGENT_RE.test(agent)) agent = agent.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 64) || 'agent';
   const ttl = Number(d.ttl);
-  return {
+  const status: AgentStatus = {
     agent,
     state: state as StatusState,
     message:
@@ -85,6 +136,87 @@ export function parseStatus(text: string, fallbackAgent: string, mtimeMs: number
     ts: parseTs(d.ts) ?? mtimeMs,
     ttl: Number.isFinite(ttl) && ttl > 0 ? Math.min(ttl, 7 * 24 * 3600) : DEFAULT_TTL_S,
   };
+  const ts = status.ts;
+  const plan = parsePlan(d.plan);
+  if (plan) {
+    status.plan = plan;
+    const explicit = d.step == null || d.step === '' ? null : String(d.step);
+    status.step =
+      (explicit && plan.some((s) => s.id === explicit) ? explicit : null) ??
+      plan.find((s) => s.state === 'active')?.id ??
+      null;
+    // The current step is shown as active even if the file still says "pending".
+    const cur = plan.find((s) => s.id === status.step);
+    if (cur && cur.state === 'pending') cur.state = 'active';
+  }
+  const questions = parseQuestions(d.questions, ts);
+  if (questions) status.questions = questions;
+  return status;
+}
+
+const clip = (v: unknown, max: number) =>
+  typeof v === 'string' || typeof v === 'number'
+    ? String(v).replace(/\s+/g, ' ').trim().slice(0, max)
+    : '';
+
+/** Lenient: bad entries are skipped rather than rejecting the whole file. */
+export function parsePlan(raw: unknown): PlanStep[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const steps: PlanStep[] = [];
+  const ids = new Set<string>();
+  for (const [i, item] of raw.entries()) {
+    if (steps.length >= MAX_STEPS) break;
+    const o: Record<string, unknown> =
+      typeof item === 'string' ? { title: item } : item && typeof item === 'object' ? item : {};
+    const title = clip(o.title ?? o.text ?? o.content, MAX_TITLE);
+    if (!title) continue;
+    let id = clip(o.id, 64) || String(i + 1);
+    if (ids.has(id)) id = `${id}-${i + 1}`;
+    ids.add(id);
+    const s = String(o.state ?? o.status ?? 'pending').toLowerCase();
+    const state = (STEP_STATES as readonly string[]).includes(s)
+      ? (s as StepState)
+      : (STEP_ALIASES[s] ?? 'pending');
+    const step: PlanStep = { id, title, state };
+    const note = clip(o.note ?? o.why, MAX_NOTE);
+    if (note) step.note = note;
+    steps.push(step);
+  }
+  return steps.length ? steps : undefined;
+}
+
+export function parseQuestions(raw: unknown, fallbackTs: number): Question[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: Question[] = [];
+  const ids = new Set<string>();
+  for (const [i, item] of raw.entries()) {
+    if (out.length >= MAX_QUESTIONS) break;
+    const o: Record<string, unknown> =
+      typeof item === 'string' ? { text: item } : item && typeof item === 'object' ? item : {};
+    if (o.resolved === true || o.resolved_at != null || o.answered === true) continue;
+    const text = String(o.text ?? o.question ?? '')
+      .replace(/\r\n?/g, '\n')
+      .trim()
+      .slice(0, MAX_QUESTION);
+    if (!text) continue;
+    let id = clip(o.id, 64) || `q${i + 1}`;
+    if (ids.has(id)) id = `${id}-${i + 1}`;
+    ids.add(id);
+    const options = Array.isArray(o.options)
+      ? o.options
+          .map((x) => clip(x, MAX_OPTION))
+          .filter(Boolean)
+          .slice(0, MAX_OPTIONS)
+      : [];
+    out.push({
+      id,
+      text,
+      options,
+      blocking: o.blocking === true || o.blocking === 'true',
+      askedAt: parseTs(o.asked_at ?? o.askedAt) ?? fallbackTs,
+    });
+  }
+  return out;
 }
 
 /**
@@ -133,6 +265,20 @@ export async function writeStatus(dir: string, input: Record<string, unknown>) {
   }
   await fsp.mkdir(dir, { recursive: true });
   const file = path.join(dir, `${agent}.json`);
+  // Plan and questions survive a plain state update (only replaced when given; null removes).
+  let existing: Record<string, unknown> = {};
+  try {
+    const prev = JSON.parse(decodeStatusFile(await fsp.readFile(file)).replace(/^\uFEFF/, ''));
+    if (prev && typeof prev === 'object' && !Array.isArray(prev)) existing = prev;
+  } catch {
+    // no previous file (or unreadable): nothing to keep
+  }
+  for (const key of ['plan', 'step', 'questions'] as const) {
+    const v = key in input ? input[key] : existing[key];
+    if (v == null) continue;
+    if (key !== 'step' && !Array.isArray(v)) throw new Error(`"${key}" must be an array`);
+    body[key] = v;
+  }
   const tmp = `${file}.${process.pid}.tmp`;
   await fsp.writeFile(tmp, JSON.stringify(body) + '\n');
   await fsp.rename(tmp, file);
@@ -260,14 +406,35 @@ export class StatusWatcher {
       if (s && !next.error && (!old || old.state !== s.state || old.message !== s.message)) {
         // A refresh with the same state and message is not new activity.
         const entry = { agent: s.agent, state: s.state, message: s.message, ts: s.ts };
-        if (!initial) {
-          this.log.push(entry);
-          if (this.log.length > LOG_MAX) this.log.shift();
-        }
+        if (!initial) this.pushLog(entry);
         if (!initial && (!old || old.state !== s.state)) transitions.push(entry);
+      }
+      if (s && !next.error && !initial) {
+        for (const e of planEvents(old, s)) {
+          this.pushLog(e);
+          transitions.push(e);
+        }
       }
     }
     if (changed && !initial && !this.closed) this.onChange(this, transitions);
+  }
+
+  private pushLog(entry: StatusLogEntry) {
+    this.log.push(entry);
+    if (this.log.length > LOG_MAX) this.log.shift();
+  }
+
+  /**
+   * The step edits are attributed to right now: the current step of the most recently
+   * updated agent that is working and has one. Null when no agent publishes a plan.
+   */
+  currentStep(): StepRef | null {
+    let best: AgentStatus | null = null;
+    for (const s of this.agents()) {
+      if (s.state !== 'working' || !s.plan || !s.step) continue;
+      if (!best || s.ts > best.ts) best = s;
+    }
+    return best ? stepRef(best) : null;
   }
 
   /** Current statuses, one per agent (the newest if two files claim the same name). */
@@ -295,4 +462,53 @@ export class StatusWatcher {
       log: this.log,
     };
   }
+}
+
+/** Compact reference to a plan step, stored with each edit recorded while it was current. */
+export interface StepRef {
+  agent: string;
+  id: string;
+  title: string;
+  /** 1-based position in the plan and the plan length, for "2/4" labels. */
+  n: number;
+  of: number;
+}
+
+export function stepRef(s: AgentStatus, id = s.step): StepRef | null {
+  if (!s.plan || !id) return null;
+  const i = s.plan.findIndex((p) => p.id === id);
+  if (i < 0) return null;
+  return { agent: s.agent, id, title: s.plan[i].title, n: i + 1, of: s.plan.length };
+}
+
+/** Activity entries for a plan/question change between two statuses of one agent. */
+export function planEvents(old: AgentStatus | null | undefined, s: AgentStatus): StatusLogEntry[] {
+  const out: StatusLogEntry[] = [];
+  if (s.step && s.step !== old?.step) {
+    const ref = stepRef(s);
+    if (ref) {
+      out.push({
+        agent: s.agent,
+        state: s.state,
+        message: `Step ${ref.n}/${ref.of}: ${ref.title}`,
+        ts: s.ts,
+        kind: 'step',
+        ref: ref.id,
+      });
+    }
+  }
+  const before = new Set((old?.questions ?? []).map((q) => q.id));
+  for (const q of s.questions ?? []) {
+    if (before.has(q.id)) continue;
+    out.push({
+      agent: s.agent,
+      state: s.state,
+      message: `Asked: ${q.text.replace(/\s+/g, ' ').slice(0, MAX_MESSAGE)}`,
+      ts: s.ts,
+      kind: 'question',
+      ref: q.id,
+      blocking: q.blocking,
+    });
+  }
+  return out;
 }

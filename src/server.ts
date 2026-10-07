@@ -38,6 +38,10 @@ interface Marker {
   agent?: string;
   state?: string;
   message?: string;
+  /** Agent markers for a new current step or a new question (absent for state changes). */
+  kind?: 'step' | 'question';
+  ref?: string;
+  blocking?: boolean;
 }
 type HistoryItem = ChangeEvent | Marker;
 let history: HistoryItem[] = [];
@@ -77,13 +81,19 @@ function summarize(i: HistoryItem) {
     instant: i.instant,
     plus,
     minus,
+    ...(i.step ? { step: i.step } : {}),
   };
 }
 
 /** Messages from the active session: record edits, turn HEAD resets into timeline markers. */
 function onSessionMessage(message: object) {
   let msg = message as { type: string; [k: string]: any };
-  if (msg.type === 'change') record(msg as ChangeEvent);
+  if (msg.type === 'change') {
+    // Attribute the edit to the plan step that is current right now (if any agent has one).
+    const step = statusWatcher?.currentStep();
+    if (step) msg.step = step;
+    record(msg as ChangeEvent);
+  }
   if (msg.type === 'reset' && (msg.reason === 'branch' || msg.reason === 'head')) {
     const marker: Marker = {
       type: 'marker',
@@ -122,6 +132,8 @@ function onStatusChange(w: StatusWatcher, transitions: StatusLogEntry[]) {
       agent: t.agent,
       state: t.state,
       message: t.message,
+      ...(t.kind ? { kind: t.kind, ref: t.ref } : {}),
+      ...(t.blocking ? { blocking: true } : {}),
     };
     record(marker);
     broadcast({ type: 'marker', marker });

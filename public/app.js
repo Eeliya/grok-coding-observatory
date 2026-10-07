@@ -1,6 +1,18 @@
 /* Coding Observatory front end — vanilla JS (ES module) + Monaco from CDN. */
 import { insertAt, nextChunkEnd, prepareHunk } from './replay.js';
 import { changeSize, effectiveCps } from './playback-policy.js';
+import {
+  countEditsByStep,
+  editMatchesStep,
+  planSummary,
+  questionClipboard,
+  questionCounts,
+  openQuestions,
+  renderPlanPanel,
+  renderQuestionCards,
+  stepBadge,
+  stepTitle,
+} from './plan-view.js';
 
 const MONACO_BASE = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min';
 
@@ -96,6 +108,8 @@ const $ = (id) => document.getElementById(id);
 /** Lucide icon-font glyph (see lucide-static in index.html). */
 const icon = (name, cls = '') =>
   `<i class="icon-${name}${cls ? ` ${cls}` : ''}" aria-hidden="true"></i>`;
+// Agent status files (docs/AGENT-PROTOCOL.md), as last sent by the server.
+const agentStatus = { agents: [], problems: [], log: [], offset: 0, staleTimer: 0 };
 const state = {
   queue: [],
   playing: false,
@@ -955,6 +969,7 @@ function summarize(ev) {
     instant: ev.instant,
     plus,
     minus,
+    ...(ev.step ? { step: ev.step } : {}),
   };
 }
 
@@ -977,7 +992,18 @@ function renderTimeline() {
   state.timeline.forEach((item, index) => {
     const el = document.createElement('div');
     el.dataset.index = String(index);
-    if (item.type === 'marker' && item.reason === 'agent') {
+    if (item.type === 'marker' && item.reason === 'agent' && item.kind) {
+      // Plan step started / question asked: a small divider that groups the edits below it.
+      const step = item.kind === 'step';
+      el.className = `tl-marker tl-agent ${step ? 'tl-stepmark' : 'tl-qmark'}${item.blocking ? ' blocking' : ''}`;
+      el.innerHTML = `${icon(step ? 'list-checks' : 'message-circle-question')} ${esc(item.message)}`;
+      el.title = `${item.agent}: ${item.message} at ${hhmmss(item.ts)}`;
+      if (step) {
+        el.dataset.agent = item.agent;
+        el.dataset.step = item.ref;
+        el.addEventListener('click', () => togglePlanFilter(item.agent, item.ref));
+      }
+    } else if (item.type === 'marker' && item.reason === 'agent') {
       el.className = `tl-marker tl-agent ${item.state}`;
       const ic =
         { working: 'loader', done: 'circle-check', idle: 'circle' }[item.state] ?? 'circle';
@@ -1003,22 +1029,32 @@ function renderTimeline() {
       if (!state.playedIds.has(item.id)) el.classList.add('pending');
       if (item.id === state.playingId) el.classList.add('playing');
       if (state.mode === 'history' && index === state.cursor) el.classList.add('selected');
+      if (state.planFilter)
+        el.classList.add(editMatchesStep(item, state.planFilter) ? 'in-step' : 'dim');
       const name = document.createElement('span');
       name.className = 'tl-name';
       name.textContent = baseName(item.path);
       const meta = document.createElement('span');
       meta.className = 'tl-meta';
-      meta.innerHTML = `${hhmmss(item.ts)} <span class="plus">+${item.plus}</span><span class="minus">−${item.minus}</span>`;
+      meta.innerHTML = `${hhmmss(item.ts)} <span class="plus">+${item.plus}</span><span class="minus">−${item.minus}</span>${
+        item.step
+          ? `<span class="tl-step" title="${esc(stepTitle(item.step))}">${icon('list-checks')}${esc(stepBadge(item.step))}</span>`
+          : ''
+      }`;
       el.append(name, meta);
-      el.title = `${item.path} · ${item.status} · ${hhmmss(item.ts)} · +${item.plus} −${item.minus}${item.instant ? ` · ${item.instant}` : ''}`;
+      el.title = `${item.path} · ${item.status} · ${hhmmss(item.ts)} · +${item.plus} −${item.minus}${item.instant ? ` · ${item.instant}` : ''}${item.step ? ` · ${stepTitle(item.step)}` : ''}`;
       el.addEventListener('click', () => viewEdit(index));
     }
     strip.append(el);
   });
   const edits = state.timeline.filter((i) => i.type === 'edit').length;
   $('timeline-count').textContent = `${edits} edit${edits === 1 ? '' : 's'}`;
+  renderPlan(); // per-step edit counts
   const focus =
-    strip.querySelector('.selected') ?? strip.querySelector('.playing') ?? strip.lastElementChild;
+    (state.planFilter && strip.querySelector('.in-step')) ??
+    strip.querySelector('.selected') ??
+    strip.querySelector('.playing') ??
+    strip.lastElementChild;
   focus?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
@@ -1528,7 +1564,6 @@ setupTimelineDock();
 // Agents report working/done/idle via files in the repo's git dir (docs/AGENT-PROTOCOL.md).
 
 let baseTitle = document.title;
-const agentStatus = { agents: [], problems: [], log: [], offset: 0, staleTimer: 0 };
 
 function fmtAgo(ms) {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -1587,6 +1622,7 @@ function renderAgentStatus() {
       )
       .join('') +
     (views.length > 3 ? `<span class="as-more">+${views.length - 3}</span>` : '') +
+    questionBadge() +
     (agentStatus.problems.length
       ? `<span class="as-problem" title="A status file could not be read">${icon('file-warning')}</span>`
       : '');
@@ -1596,7 +1632,9 @@ function renderAgentStatus() {
           (v) =>
             `${v.agent}: ${v.view === 'stale' ? 'possibly stalled' : v.view}${v.message ? ` — ${v.message}` : ''} (${v.ago})`,
         )
-        .join('\n') + '\nClick for recent activity'
+        .join('\n') +
+      questionTitle() +
+      '\nClick for recent activity'
     : 'Agent status problems — click for details';
   // Flip to "possibly stalled" right when the next working status runs out, not on the next tick.
   clearTimeout(agentStatus.staleTimer);
@@ -1606,8 +1644,13 @@ function renderAgentStatus() {
     .map((v) => v.ts + v.ttl * 1000 - now)
     .filter((ms) => ms >= 0 && ms < 2 ** 31 - 1);
   if (due.length) agentStatus.staleTimer = setTimeout(renderAgentStatus, Math.min(...due) + 50);
+  renderPlan();
+  renderQuestions();
   const top = views[0]?.view;
-  const prefix = { working: '⏳ ', stale: '⚠ ', done: '✓ ' }[top] ?? '';
+  const qc = questionCounts(agentStatus.agents);
+  const prefix = qc.blocking
+    ? '❓ '
+    : ({ working: '⏳ ', stale: '⚠ ', done: '✓ ' }[top] ?? (qc.open ? '❓ ' : ''));
   document.title = prefix + baseTitle;
   if (!$('as-pop').hidden) {
     renderStatusPop(views);
@@ -1617,25 +1660,45 @@ function renderAgentStatus() {
 
 function renderStatusPop(views = agentStatus.agents.map(agentView)) {
   const agents = views
-    .map(
-      (v) =>
-        `<li class="as-seg ${v.view}" title="${esc(`${v.agent}: ${v.view === 'stale' ? 'possibly stalled' : v.view}${v.message ? ` — ${v.message}` : ''} (${v.ago})`)}">${agentLabel(v, true)}</li>`,
-    )
+    .map((v) => {
+      const sum = planSummary(v);
+      const plan = sum
+        ? `<li class="as-plan" title="${esc(sum.current ? `Current step: ${sum.current.title}` : 'No current step')}">${icon('list-checks')}<span class="as-msg">${
+            sum.current
+              ? `Step ${sum.current.n}/${sum.current.of}: ${esc(sum.current.title)}`
+              : 'Plan'
+          } · ${sum.done}/${sum.total} done</span></li>`
+        : '';
+      return `<li class="as-seg ${v.view}" title="${esc(`${v.agent}: ${v.view === 'stale' ? 'possibly stalled' : v.view}${v.message ? ` — ${v.message}` : ''} (${v.ago})`)}">${agentLabel(v, true)}</li>${plan}`;
+    })
     .join('');
   const log = agentStatus.log
     .slice(-12)
     .reverse()
     .map((e) => {
-      const ic = { working: 'loader', done: 'circle-check', idle: 'circle' }[e.state] ?? 'circle';
+      const ic =
+        e.kind === 'step'
+          ? 'list-checks'
+          : e.kind === 'question'
+            ? 'message-circle-question'
+            : ({ working: 'loader', done: 'circle-check', idle: 'circle' }[e.state] ?? 'circle');
       const text = e.message || e.state;
-      return `<li title="${esc(`${hhmmss(e.ts)} ${e.agent}: ${text}`)}"><span class="as-time">${hhmmss(e.ts)}</span>${icon(ic, `as-l-${e.state}`)}<span class="as-msg"><b>${esc(e.agent)}</b> ${esc(text)}</span></li>`;
+      return `<li title="${esc(`${hhmmss(e.ts)} ${e.agent}: ${text}`)}"><span class="as-time">${hhmmss(e.ts)}</span>${icon(ic, e.kind ? `as-l-${e.kind}${e.blocking ? ' blocking' : ''}` : `as-l-${e.state}`)}<span class="as-msg"><b>${esc(e.agent)}</b> ${esc(text)}</span></li>`;
     })
+    .join('');
+  const qs = openQuestions(agentStatus.agents);
+  const questions = qs
+    .map(
+      (q) =>
+        `<li class="as-question${q.blocking ? ' blocking' : ''}" title="${esc(q.text)}">${icon(q.blocking ? 'octagon-pause' : 'message-circle-question')}<span class="as-msg">${q.agent !== 'agent' ? `<b>${esc(q.agent)}</b> ` : ''}${esc(q.text)}</span></li>`,
+    )
     .join('');
   const problems = agentStatus.problems
     .map((p) => `<li class="as-bad">${icon('file-warning')}${esc(p.file)}: ${esc(p.error)}</li>`)
     .join('');
   $('as-pop').innerHTML =
     `<div class="as-h">Agents</div><ul>${agents || '<li class="muted">No status reported</li>'}</ul>` +
+    (questions ? `<div class="as-h">Open questions</div><ul>${questions}</ul>` : '') +
     (problems ? `<div class="as-h">Problems</div><ul>${problems}</ul>` : '') +
     `<div class="as-h">Recent activity</div><ul class="as-log">${log || '<li class="muted">No changes since the server started</li>'}</ul>`;
 }
@@ -1661,7 +1724,103 @@ function placeStatusPop() {
   if (shift) pop.style.right = `${shift}px`;
 }
 
+// ------------------------------------------------------------------ plan + questions
+
+const PLAN_COLLAPSED_KEY = 'observatory.planCollapsed';
+state.planFilter = null; // { agent, id }: highlight the edits of one plan step
+state.planCollapsed = localStorage.getItem(PLAN_COLLAPSED_KEY) === '1';
+
+function questionBadge() {
+  const { open, blocking } = questionCounts(agentStatus.agents);
+  if (!open) return '';
+  const tip = `${open} open question${open === 1 ? '' : 's'}${blocking ? ` (${blocking} blocking)` : ''}`;
+  return `<span class="as-q${blocking ? ' blocking' : ''}" title="${tip}">${icon(blocking ? 'octagon-pause' : 'message-circle-question')}${open}</span>`;
+}
+
+function questionTitle() {
+  const { open, blocking } = questionCounts(agentStatus.agents);
+  return open
+    ? `\n${open} open question${open === 1 ? '' : 's'}${blocking ? `, ${blocking} blocking` : ''}`
+    : '';
+}
+
+function renderPlan() {
+  const box = $('plan');
+  if (!box) return;
+  // Drop a filter whose step no longer exists.
+  const f = state.planFilter;
+  if (
+    f &&
+    !agentStatus.agents.some((a) => a.agent === f.agent && a.plan?.some((s) => s.id === f.id))
+  ) {
+    state.planFilter = null;
+  }
+  const html = renderPlanPanel(agentStatus.agents, {
+    collapsed: state.planCollapsed,
+    filter: state.planFilter,
+    counts: countEditsByStep(state.timeline),
+  });
+  box.hidden = !html;
+  if (box.innerHTML !== html) box.innerHTML = html;
+}
+
+function renderQuestions() {
+  const box = $('questions');
+  if (!box) return;
+  const html = renderQuestionCards(agentStatus.agents, Date.now() + agentStatus.offset);
+  box.hidden = !html;
+  if (box.innerHTML !== html) box.innerHTML = html;
+}
+
+function togglePlanFilter(agent, id) {
+  const f = state.planFilter;
+  state.planFilter = f && f.agent === agent && f.id === id ? null : { agent, id };
+  renderTimeline();
+}
+
+function setupPlan() {
+  const box = $('plan');
+  const pick = (e) => {
+    const li = e.target.closest('.ps');
+    if (li) togglePlanFilter(li.dataset.agent, li.dataset.step);
+  };
+  box.addEventListener('click', (e) => {
+    if (e.target.closest('.plan-head')) {
+      state.planCollapsed = !state.planCollapsed;
+      localStorage.setItem(PLAN_COLLAPSED_KEY, state.planCollapsed ? '1' : '0');
+      renderPlan();
+    } else if (e.target.closest('.plan-clear')) {
+      state.planFilter = null;
+      renderTimeline();
+    } else pick(e);
+  });
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      if (!e.target.closest('.ps')) return;
+      e.preventDefault();
+      pick(e);
+    }
+  });
+  $('questions').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.q-copy');
+    if (!btn) return;
+    const card = btn.closest('.q-card');
+    const q = openQuestions(agentStatus.agents).find(
+      (x) => x.agent === card.dataset.agent && x.id === card.dataset.q,
+    );
+    if (!q) return;
+    try {
+      await navigator.clipboard.writeText(questionClipboard(q));
+      btn.classList.add('copied');
+      btn.lastChild.textContent = ' Copied';
+    } catch {
+      btn.lastChild.textContent = ' Copy failed';
+    }
+  });
+}
+
 function setupAgentStatus() {
+  setupPlan();
   $('as-chip').addEventListener('click', (e) => {
     e.stopPropagation();
     toggleStatusPop();

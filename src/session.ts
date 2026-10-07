@@ -53,6 +53,8 @@ export interface ChangeEvent {
   hash: string;
   /** Set when the change should be shown instantly instead of typed. */
   instant: 'generated' | 'large' | 'binary' | null;
+  /** Plan step that was current when the edit was recorded (set by the server). */
+  step?: { agent: string; id: string; title: string; n: number; of: number };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
