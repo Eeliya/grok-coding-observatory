@@ -1,9 +1,10 @@
 # Agent status protocol
 
 Lets an AI coding agent tell the observatory whether it is **working** (even while it only runs
-lint, tests or git), **done**, or **idle**. The header shows a chip per agent and the session
-timeline gets a marker for each working/done transition. Optional: without status files the app
-works as before.
+lint, tests or git), **done**, or **idle**, and optionally publish its **plan**, the current
+**step** and open **questions** for the human. The header shows a chip per agent, the session
+timeline gets a marker for each working/done transition and a Plan checklist, and open questions
+appear as cards above the editor. Optional: without status files the app works as before.
 
 **Tell your agent:** _"Follow docs/AGENT-PROTOCOL.md in grok-coding-observatory to report your
 status."_
@@ -17,6 +18,12 @@ status."_
    Expecting one command to take longer? Set a larger `ttl` before starting it.
 4. **Finished** (or gave up) → `done` with a one-line summary (`"Tests pass, 3 files changed"`).
 5. `idle` = nothing going on (optional; `done` is fine to leave in place).
+
+Optional, for tasks with several steps: publish your **plan** when you start, mark the current
+**step** as you go, and put **questions** for the human in the same file (see
+[Plan, steps and questions](#plan-steps-and-questions-optional)). The human then sees a checklist
+with progress, which edits belong to which step, and your open questions highlighted until you
+resolve them.
 
 A `working` status that is not refreshed within its TTL is shown as **possibly stalled · last seen
 X ago**. `done` and `idle` never go stale.
@@ -63,6 +70,62 @@ Use the same name for the file and `agent`. Several agents can report at once, e
 file. Delete your file to disappear from the header. An unreadable file (bad JSON, unknown state)
 is flagged in the chip's popover; the agent's last valid status stays until the file is fixed.
 
+## Plan, steps and questions (optional)
+
+Three more fields in the same file. Files without them work exactly as before.
+
+```json
+{
+  "state": "working",
+  "message": "Adding the DISCOUNTS table",
+  "agent": "grok",
+  "step": "2",
+  "plan": [
+    { "id": "1", "title": "Read the cart code", "state": "done" },
+    { "id": "2", "title": "Add discount codes", "state": "active", "note": "DISCOUNTS table" },
+    { "id": "3", "title": "Write tests", "state": "pending" },
+    { "id": "4", "title": "Update the README", "state": "pending" }
+  ],
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Should discount codes stack with sales?",
+      "options": ["Yes, apply both", "No, best price wins"],
+      "blocking": true,
+      "asked_at": "2026-10-07T15:40:00Z"
+    }
+  ]
+}
+```
+
+| Field       | Meaning                                                                                                                                                                                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `plan`      | Ordered steps (max 30). Each: `title` (required, max 200), `id` (default: its position, `"1"`, `"2"`, …), `state` `pending` \| `active` \| `done` \| `skipped` (default `pending`; `in_progress` and `completed` are accepted too), optional `note` (why / detail) |
+| `step`      | `id` of the current step. Default: the first `active` one. Edits made while a step is current are labelled with it in the session timeline                                                                                                                         |
+| `questions` | Open questions for the human (max 10). Each: `text` (required, max 500), `id` (default `q1`, `q2`, …), optional `options` (max 8 short strings), `blocking: true` if you are waiting for the answer, `asked_at` (ISO 8601 or epoch; default: `ts`)                 |
+
+- **Keep the plan current** by rewriting the whole file (keep `plan` and `questions` in every
+  write, or they disappear). Starting a step: set it `active`, set `step` to its id, mark the
+  previous one `done`.
+- **The human answers in your chat**, not in the observatory. Ask there too; the question card
+  just makes sure it is not missed. Once answered, **resolve** it: remove it from `questions` (or
+  set `"resolved": true`).
+- Edits are attributed to the current step of the most recently updated **working** agent with a
+  plan; after `done` new edits are not attributed to any step.
+
+The CLI below does all of this for you and keeps the plan and questions on every update:
+
+```bash
+S="node ~/work/grok-coding-observatory/bin/status.mjs --agent grok"   # or: grok-observatory --agent grok
+$S plan set "Read the cart code" "Add discount codes" "Write tests" "Update the README"
+$S step start 1                    # current step (the previous active step becomes done)
+$S step start 2 "DISCOUNTS table"  # optional note
+$S ask "Should discount codes stack with sales?" --option "Yes, apply both" --option "No, best price wins" --blocking   # prints q1
+$S resolve q1                      # after the human answered
+$S step done                       # current step done; also: step skip 3, plan add "…", plan clear
+$S done "Discount codes added, tests pass"
+```
+
 ## Snippets
 
 **bash** (in the repo; plain `echo`, no tooling):
@@ -104,7 +167,9 @@ fs.writeFileSync(
 
 ## Alternatives
 
-**CLI** in this repo (resolves the path, writes atomically, adds `ts`):
+**CLI** in this repo (resolves the path, writes atomically, adds `ts`, keeps `plan` and
+`questions`; plan commands are listed [above](#plan-steps-and-questions-optional), and
+`--help` prints them all):
 
 ```bash
 node ~/work/grok-coding-observatory/bin/status.mjs working "Running lint" --agent grok [--ttl 1800] [--repo <path>]
@@ -121,5 +186,9 @@ otherwise 415). Writes the status file of the repo currently shown:
 curl -s -X POST http://127.0.0.1:4477/api/status -H 'Content-Type: application/json' -d '{"state":"working","message":"Running tests","agent":"grok","ttl":900}'
 ```
 
-`GET /api/status` returns the current statuses (`agents`, each with `stale`), unreadable files
-(`problems`) and the recent activity `log`.
+The body may also carry `plan`, `step` and `questions`; when it doesn't, those already in the file
+are kept (send `null` to remove one).
+
+`GET /api/status` returns the current statuses (`agents`, each with `stale` and, when published,
+the parsed `plan`, `step` and open `questions`), unreadable files (`problems`) and the recent
+activity `log` (state changes, new current steps and new questions).

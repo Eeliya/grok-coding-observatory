@@ -253,6 +253,30 @@ mkdir -p "$d" &amp;&amp; printf '{"state":"%s","message":"%s","agent":"claude"}\
             to your <code>CLAUDE.md</code>; Claude then writes its own "Running tests" or
             "Refactoring the parser" updates.
           </p>
+          <h3>Its plan and questions, too</h3>
+          <p>
+            On bigger tasks Claude Code keeps a to-do list. The observatory can show that plan as a
+            checklist above the session timeline, label each edit with the step it belongs to, and
+            keep Claude's open questions in a highlighted card until they are resolved. Add this to
+            your <code>CLAUDE.md</code>:
+          </p>
+          <pre><code>## Plan and questions for grok-coding-observatory
+For a task with several steps, mirror your to-do list into the status file
+(.git/observatory/status/claude.json, see docs/AGENT-PROTOCOL.md in
+grok-coding-observatory) as "plan" (id, title, state: pending|active|done|skipped)
+with "step" set to the current step id. Put questions for me in "questions"
+(id, text, options, blocking: true if you are waiting) and still ask them in
+the chat; remove a question once I have answered it.</code></pre>
+          <p>
+            The hook script above rewrites the whole file on every prompt and tool call, which drops
+            a plan. To use both, let the hook call the bundled CLI instead, which keeps the plan and
+            questions:
+            <code
+              >node ~/work/grok-coding-observatory/bin/status.mjs "$1" "$2" --agent claude --repo
+              "$CLAUDE_PROJECT_DIR"</code
+            >
+            (with the repo cloned there).
+          </p>
         </div>
       </section>
 

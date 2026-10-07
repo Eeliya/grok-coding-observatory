@@ -251,7 +251,21 @@ When you start a task, before a long command (tests, build, install) and when
 you finish, run this from the repo root (use "done" and a one-line summary
 at the end):
 
-d="$(git rev-parse --path-format=absolute --git-path observatory/status)" &amp;&amp; mkdir -p "$d" &amp;&amp; echo '{"state":"working","message":"Running tests","agent":"agent"}' &gt; "$d/agent.json"</code></pre>
+d="$(git rev-parse --path-format=absolute --git-path observatory/status)" &amp;&amp; mkdir -p "$d" &amp;&amp; echo '{"state":"working","message":"Running tests","agent":"agent"}' &gt; "$d/agent.json"
+
+For a task with several steps, also put your plan and any questions for me
+in the same JSON (rewrite the whole file each time and keep both; drop a
+question once I've answered it, and still ask it in the chat):
+"step":"2","plan":[{"id":"1","title":"Read the code","state":"done"},
+{"id":"2","title":"Make the change","state":"active"},
+{"id":"3","title":"Run the tests","state":"pending"}],
+"questions":[{"id":"q1","text":"Keep the old API?","options":["Yes","No"],"blocking":true}]</code></pre>
+          <p>
+            With a plan, the observatory shows a checklist with the current step above the session
+            timeline, labels every edit with the step it belongs to, and keeps open questions in a
+            highlighted card above the editor (and a badge on the status chip) until the agent
+            removes them. Both are optional; the plain status line works without them.
+          </p>
           <p>
             The file lives inside the <code>.git</code> folder, so it is never committed. The full
             format is in the

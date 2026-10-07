@@ -286,6 +286,14 @@ npx github:Eeliya/grok-coding-observatory   # open http://localhost:4477</code><
               </p>
             </li>
             <li class="card">
+              <h3>Agent plan and questions</h3>
+              <p>
+                An agent can publish its plan: a checklist with the current step and progress, and
+                every edit labelled with its step. Its questions for you stay highlighted above the
+                editor, with their options, until it resolves them.
+              </p>
+            </li>
+            <li class="card">
               <h3>Comfortable controls</h3>
               <p>
                 A repo picker (recent repos, repos found under <code>~/work</code>, or any path), A−
@@ -457,8 +465,16 @@ npm start -- /path/to/your/repo    # watch that repo right away</code></pre>
               shows as <em>possibly stalled</em>.
             </li>
             <li>
+              Optional <code>plan</code> (steps with <code>pending</code> / <code>active</code> /
+              <code>done</code> / <code>skipped</code>), <code>step</code> (the current one) and
+              <code>questions</code> (text, options, <code>blocking</code>) add a plan checklist,
+              step labels on edits and highlighted questions for you.
+            </li>
+            <li>
               Write it with plain <code>echo</code> in bash, PowerShell, Node, the bundled CLI
-              (<code>bin/status.mjs</code>) or <code>POST /api/status</code> on the running server.
+              (<code>bin/status.mjs</code>, with <code>plan set</code>, <code>step start</code>,
+              <code>ask</code> and <code>resolve</code>) or <code>POST /api/status</code> on the
+              running server.
             </li>
           </ul>
           <p>
