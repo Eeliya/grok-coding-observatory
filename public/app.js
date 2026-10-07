@@ -1609,19 +1609,26 @@ function renderAgentStatus() {
   const top = views[0]?.view;
   const prefix = { working: '⏳ ', stale: '⚠ ', done: '✓ ' }[top] ?? '';
   document.title = prefix + baseTitle;
-  if (!$('as-pop').hidden) renderStatusPop(views);
+  if (!$('as-pop').hidden) {
+    renderStatusPop(views);
+    placeStatusPop();
+  }
 }
 
 function renderStatusPop(views = agentStatus.agents.map(agentView)) {
   const agents = views
-    .map((v) => `<li class="as-seg ${v.view}">${agentLabel(v, true)}</li>`)
+    .map(
+      (v) =>
+        `<li class="as-seg ${v.view}" title="${esc(`${v.agent}: ${v.view === 'stale' ? 'possibly stalled' : v.view}${v.message ? ` — ${v.message}` : ''} (${v.ago})`)}">${agentLabel(v, true)}</li>`,
+    )
     .join('');
   const log = agentStatus.log
     .slice(-12)
     .reverse()
     .map((e) => {
       const ic = { working: 'loader', done: 'circle-check', idle: 'circle' }[e.state] ?? 'circle';
-      return `<li><span class="as-time">${hhmmss(e.ts)}</span>${icon(ic, `as-l-${e.state}`)}<b>${esc(e.agent)}</b> ${esc(e.message || e.state)}</li>`;
+      const text = e.message || e.state;
+      return `<li title="${esc(`${hhmmss(e.ts)} ${e.agent}: ${text}`)}"><span class="as-time">${hhmmss(e.ts)}</span>${icon(ic, `as-l-${e.state}`)}<span class="as-msg"><b>${esc(e.agent)}</b> ${esc(text)}</span></li>`;
     })
     .join('');
   const problems = agentStatus.problems
@@ -1636,7 +1643,22 @@ function renderStatusPop(views = agentStatus.agents.map(agentView)) {
 function toggleStatusPop(open = $('as-pop').hidden) {
   $('as-pop').hidden = !open;
   $('as-chip').setAttribute('aria-expanded', String(open));
-  if (open) renderStatusPop();
+  if (open) {
+    renderStatusPop();
+    placeStatusPop();
+  }
+}
+
+/** Keep the popup inside the viewport (it is anchored to the chip's right edge). */
+function placeStatusPop() {
+  const pop = $('as-pop');
+  pop.style.right = '';
+  const r = pop.getBoundingClientRect();
+  const margin = 8;
+  let shift = 0;
+  if (r.left < margin) shift = r.left - margin;
+  else if (r.right > innerWidth - margin) shift = r.right - (innerWidth - margin);
+  if (shift) pop.style.right = `${shift}px`;
 }
 
 function setupAgentStatus() {
