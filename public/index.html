@@ -16,7 +16,10 @@
   </head>
   <body>
     <header>
-      <span class="logo"><span class="dot" id="dot"></span> Coding Observatory</span>
+      <span class="logo"
+        ><span class="mark" aria-hidden="true"><span class="dot" id="dot"></span></span
+        ><span class="logo-text">Coding Observatory</span></span
+      >
       <button id="repo" class="repo-btn" title="Choose the repository to watch">
         <span id="repo-name">Choose repo…</span>
         <i class="icon-chevron-down caret" aria-hidden="true"></i>
@@ -60,7 +63,7 @@
         </button>
       </div>
       <label class="speed">
-        Speed
+        <span class="speed-label">Speed</span>
         <select id="speed">
           <option value="slow">Slow</option>
           <option value="normal">Normal</option>

@@ -34,7 +34,53 @@ const FONT_MAX = 20;
 const FONT_DEFAULT = 11;
 let fontSize = Math.round(Number(localStorage.getItem(FONT_KEY)) || FONT_DEFAULT);
 fontSize = Math.min(FONT_MAX, Math.max(FONT_MIN, fontSize));
-const fontOptions = () => ({ fontSize, lineHeight: Math.round(fontSize * 1.5) });
+const CODE_FONT = "'JetBrains Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace";
+const fontOptions = () => ({
+  fontSize,
+  lineHeight: Math.round(fontSize * 1.5),
+  fontFamily: CODE_FONT,
+});
+const THEME = 'observatory';
+
+/** Monaco theme matching style.css: vs-dark syntax colours on the app's surfaces. */
+function defineTheme() {
+  monaco.editor.defineTheme(THEME, {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [{ token: 'comment', foreground: '7d8590', fontStyle: 'italic' }],
+    colors: {
+      'editor.background': '#141518',
+      'editor.foreground': '#e3e2dc',
+      'editorLineNumber.foreground': '#4a4c53',
+      'editorLineNumber.activeForeground': '#d4ff4f',
+      'editorCursor.foreground': '#d4ff4f',
+      'editor.lineHighlightBackground': '#1b1c20',
+      'editor.lineHighlightBorder': '#00000000',
+      'editor.selectionBackground': '#d4ff4f33',
+      'editor.inactiveSelectionBackground': '#d4ff4f1f',
+      'editor.findMatchHighlightBackground': '#f2c66d33',
+      'editorIndentGuide.background1': '#ffffff0d',
+      'editorIndentGuide.activeBackground1': '#ffffff24',
+      'editorGutter.background': '#141518',
+      'editorWidget.background': '#1f2024',
+      'editorWidget.border': '#ffffff1a',
+      'editorHoverWidget.background': '#1f2024',
+      'scrollbar.shadow': '#00000000',
+      'scrollbarSlider.background': '#ffffff14',
+      'scrollbarSlider.hoverBackground': '#ffffff24',
+      'scrollbarSlider.activeBackground': '#d4ff4f40',
+      'minimap.background': '#141518',
+      'minimapSlider.background': '#ffffff10',
+      'editorOverviewRuler.border': '#00000000',
+      'diffEditor.insertedTextBackground': '#5bd69a24',
+      'diffEditor.removedTextBackground': '#ff6b6b30',
+      'diffEditor.insertedLineBackground': '#5bd69a12',
+      'diffEditor.removedLineBackground': '#ff6b6b17',
+      'diffEditor.diagonalFill': '#ffffff0a',
+      'diffEditor.border': '#ffffff10',
+    },
+  });
+}
 
 const LANGS = {
   js: 'javascript',
@@ -724,7 +770,7 @@ async function showDiff(p, base = null) {
 function setDiff(p, original, modified) {
   if (!diffEditor) {
     diffEditor = monaco.editor.createDiffEditor($('diff'), {
-      theme: 'vs-dark',
+      theme: THEME,
       readOnly: true,
       automaticLayout: true,
       renderSideBySide: true,
@@ -1836,10 +1882,11 @@ require(['vs/editor/editor.main'], () => {
   monaco = window.monaco;
   // Explicit (not editor-owned) empty model, so it survives setModel() calls and
   // can be shown again after switching repos.
+  defineTheme();
   blankModel = monaco.editor.createModel('', 'plaintext');
   editor = monaco.editor.create($('editor'), {
     model: blankModel,
-    theme: 'vs-dark',
+    theme: THEME,
     readOnly: true,
     automaticLayout: true,
     ...fontOptions(),
