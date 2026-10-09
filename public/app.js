@@ -1,6 +1,7 @@
 /* Coding Observatory front end — vanilla JS (ES module) + Monaco from CDN. */
 import { insertAt, nextChunkEnd, prepareHunk } from './replay.js';
 import { changeSize, effectiveCps } from './playback-policy.js';
+import { clampWidth, keyStep, panelBounds } from './panel-size.js';
 import {
   countEditsByStep,
   editMatchesStep,
@@ -1566,7 +1567,8 @@ window.addEventListener(
     const typing =
       t instanceof HTMLInputElement ||
       t instanceof HTMLTextAreaElement ||
-      t instanceof HTMLSelectElement;
+      t instanceof HTMLSelectElement ||
+      t.classList?.contains('resizer'); // a focused resize handle owns the arrow keys
     if (e.key === 'Escape') {
       if (!$('as-pop').hidden) toggleStatusPop(false);
       else if (!$('picker').hidden) closePicker();
@@ -1605,6 +1607,118 @@ function setupTimelineDock() {
   setTimelineCollapsed(localStorage.getItem(TL_COLLAPSED_KEY) === '1');
 }
 setupTimelineDock();
+
+// Resizable side panels: drag the handle in the gap, arrow keys on a focused handle,
+// double-click (or Enter) resets to the CSS default. Widths are remembered per panel.
+const RESIZERS = [
+  {
+    handle: 'side-resizer',
+    panel: 'side',
+    kind: 'side',
+    other: 'timeline',
+    prop: '--side-w',
+    edge: 'right',
+  },
+  {
+    handle: 'tl-resizer',
+    panel: 'timeline',
+    kind: 'timeline',
+    other: 'side',
+    prop: '--tl-w',
+    edge: 'left',
+  },
+];
+const widthKey = (kind) => `observatory.width.${kind}`;
+
+function boundsFor(r) {
+  const main = document.querySelector('main');
+  const cs = getComputedStyle(main);
+  const gap = parseFloat(cs.columnGap) || 0;
+  const room =
+    main.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 2 * gap;
+  return panelBounds(r.kind, room, $(r.other).getBoundingClientRect().width);
+}
+
+function setPanelWidth(r, width, { save = true } = {}) {
+  const main = document.querySelector('main');
+  const w = width == null ? null : clampWidth(width, boundsFor(r));
+  if (w == null) main.style.removeProperty(r.prop);
+  else main.style.setProperty(r.prop, `${w}px`);
+  if (save) {
+    if (w == null) localStorage.removeItem(widthKey(r.kind));
+    else localStorage.setItem(widthKey(r.kind), String(w));
+  }
+  updateResizerAria(r);
+}
+
+/** The panel's width as set (not as measured mid-transition). */
+function panelWidth(r) {
+  const set = parseFloat(document.querySelector('main').style.getPropertyValue(r.prop));
+  return set > 0 ? set : $(r.panel).getBoundingClientRect().width;
+}
+
+function updateResizerAria(r) {
+  const b = boundsFor(r);
+  const h = $(r.handle);
+  h.setAttribute('aria-valuemin', String(b.min));
+  h.setAttribute('aria-valuemax', String(b.max));
+  h.setAttribute('aria-valuenow', String(Math.round(panelWidth(r))));
+}
+
+function setupResizers() {
+  for (const r of RESIZERS) {
+    const h = $(r.handle);
+    h.addEventListener('pointerdown', (e) => {
+      // No preventDefault: it would suppress mouse events and with them dblclick.
+      // body.resizing (user-select: none) stops text selection instead.
+      if (e.button !== 0) return;
+      h.setPointerCapture(e.pointerId);
+      const startX = e.clientX;
+      const startW = panelWidth(r);
+      let moved = false;
+      h.classList.add('dragging');
+      document.body.classList.add('resizing');
+      const move = (ev) => {
+        const dx = ev.clientX - startX;
+        if (!moved && Math.abs(dx) < 2) return;
+        moved = true;
+        setPanelWidth(r, startW + (r.edge === 'left' ? -dx : dx), { save: false });
+      };
+      const up = () => {
+        h.removeEventListener('pointermove', move);
+        h.classList.remove('dragging');
+        document.body.classList.remove('resizing');
+        if (moved) setPanelWidth(r, panelWidth(r));
+      };
+      h.addEventListener('pointermove', move);
+      h.addEventListener('pointerup', up, { once: true });
+      h.addEventListener('pointercancel', up, { once: true });
+    });
+    h.addEventListener('dblclick', () => setPanelWidth(r, null));
+    h.addEventListener('keydown', (e) => {
+      const w = panelWidth(r);
+      let next = keyStep(w, e.key, e.shiftKey, r.edge);
+      if (e.key === 'Home') next = boundsFor(r).min;
+      else if (e.key === 'End') next = boundsFor(r).max;
+      if (e.key === 'Enter') setPanelWidth(r, null);
+      else if (next != null) setPanelWidth(r, next);
+      else return;
+      e.preventDefault();
+    });
+    const saved = localStorage.getItem(widthKey(r.kind));
+    if (saved) setPanelWidth(r, saved, { save: false });
+    else updateResizerAria(r);
+  }
+  // Re-clamp remembered widths when the window shrinks, so the editor keeps its room.
+  window.addEventListener('resize', () => {
+    for (const r of RESIZERS) {
+      const saved = localStorage.getItem(widthKey(r.kind));
+      if (saved) setPanelWidth(r, saved, { save: false });
+      else updateResizerAria(r);
+    }
+  });
+}
+setupResizers();
 
 // ------------------------------------------------------------------ agent status
 // Agents report working/done/idle via files in the repo's git dir (docs/AGENT-PROTOCOL.md).

@@ -433,8 +433,7 @@ aside,
   box-shadow: var(--shadow);
 }
 aside {
-  width: 264px;
-  min-width: 200px;
+  width: var(--side-w, 264px);
   flex: none;
   padding: 6px 0 10px;
   overflow-y: auto;
@@ -447,6 +446,62 @@ aside {
   min-width: 0;
   overflow: hidden;
   background: var(--code-bg);
+}
+/* Drag handles live in the gaps between panels (negative margins keep the gap size) */
+.resizer {
+  position: relative;
+  flex: none;
+  width: 12px;
+  margin: 0 -11px;
+  z-index: 3;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.resizer::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 44px;
+  margin: -22px 0 0 -2px;
+  border-radius: 999px;
+  background: var(--panel-4);
+  opacity: 0;
+  transition:
+    opacity 0.15s var(--ease),
+    background-color 0.15s var(--ease),
+    height 0.2s var(--ease),
+    margin 0.2s var(--ease);
+}
+main:hover .resizer::after {
+  opacity: 1;
+}
+.resizer:hover::after,
+.resizer:focus-visible::after,
+.resizer.dragging::after {
+  height: 72px;
+  margin-top: -36px;
+  background: var(--accent);
+  box-shadow: 0 0 12px rgba(212, 255, 79, 0.45);
+  opacity: 1;
+}
+.resizer:focus-visible::after {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+main:has(.timeline.collapsed) #tl-resizer {
+  display: none;
+}
+body.resizing,
+body.resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+body.resizing .timeline,
+body.resizing aside {
+  transition: none;
 }
 
 /* ---------------------------------------------------------------- changed files */
@@ -845,7 +900,7 @@ aside {
   flex: none;
   display: flex;
   flex-direction: column;
-  width: 272px;
+  width: var(--tl-w, clamp(340px, 30vw, 460px));
   overflow: hidden;
   transition: width 0.2s var(--ease);
 }
@@ -1349,13 +1404,20 @@ aside {
   display: flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
   margin-top: 8px;
   padding: 4px 4px 0 6px;
   color: var(--accent);
   font-size: 11px;
   font-weight: 600;
 }
+.plan-filter-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .plan-clear {
+  flex: none;
   height: 24px;
   margin-left: auto;
   padding: 0 10px;
@@ -1891,9 +1953,6 @@ aside {
     display: none;
   }
   aside {
-    width: 240px;
-  }
-  .timeline:not(.collapsed) {
-    width: 256px;
+    width: var(--side-w, 240px);
   }
 }

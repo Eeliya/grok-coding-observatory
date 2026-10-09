@@ -116,11 +116,11 @@ export function renderPlanPanel(agents, opts = {}) {
     ? `Step ${first.current.n}/${first.current.of}`
     : `${first.done}/${first.total}`;
   const filterBar = filter
-    ? `<div class="plan-filter">${icon('filter')} Highlighting edits of step ${esc(
+    ? `<div class="plan-filter">${icon('filter')}<span class="plan-filter-text">Highlighting edits of step ${esc(
         (withPlans.find((a) => a.agent === filter.agent)?.plan ?? []).findIndex(
           (s) => s.id === filter.id,
         ) + 1 || '?',
-      )} <button class="plan-clear" type="button">Show all</button></div>`
+      )}</span><button class="plan-clear" type="button">Show all</button></div>`
     : '';
   return (
     `<button class="plan-head" type="button" aria-expanded="${!collapsed}" title="${

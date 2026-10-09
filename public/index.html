@@ -77,7 +77,7 @@
       </button>
     </header>
     <main>
-      <aside>
+      <aside id="side">
         <div id="unseen-bar" class="unseen-bar" hidden>
           <span class="unseen-dot"></span><span id="unseen-count"></span>
           <button id="mark-seen" title="Mark every changed file as seen">
@@ -87,6 +87,16 @@
         <div id="files"></div>
         <div id="empty" class="muted empty">No changes yet — waiting for edits…</div>
       </aside>
+      <div
+        id="side-resizer"
+        class="resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize the file list"
+        aria-controls="side"
+        tabindex="0"
+        title="Drag to resize · arrow keys to adjust · double-click to reset"
+      ></div>
       <section id="stage">
         <div id="progress" class="progress idle" aria-hidden="true">
           <div id="progress-fill"></div>
@@ -109,6 +119,16 @@
         <div id="editor"></div>
         <div id="diff" hidden></div>
       </section>
+      <div
+        id="tl-resizer"
+        class="resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize the session panel"
+        aria-controls="timeline"
+        tabindex="0"
+        title="Drag to resize · arrow keys to adjust · double-click to reset"
+      ></div>
       <div id="timeline" class="timeline" role="complementary" aria-label="Live session timeline">
         <div
           class="tl-controls"
