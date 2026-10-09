@@ -101,12 +101,16 @@ Three more fields in the same file. Files without them work exactly as before.
 | Field       | Meaning                                                                                                                                                                                                                                                            |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `plan`      | Ordered steps (max 30). Each: `title` (required, max 200), `id` (default: its position, `"1"`, `"2"`, …), `state` `pending` \| `active` \| `done` \| `skipped` (default `pending`; `in_progress` and `completed` are accepted too), optional `note` (why / detail) |
-| `step`      | `id` of the current step. Default: the first `active` one. Edits made while a step is current are labelled with it in the session timeline                                                                                                                         |
+| `step`      | `id` of the current step. Default: the first `active` one. It is shown as active even if its `state` still says `pending`. Edits made while a step is current are labelled with it in the session timeline                                                         |
 | `questions` | Open questions for the human (max 10). Each: `text` (required, max 500), `id` (default `q1`, `q2`, …), optional `options` (max 8 short strings), `blocking: true` if you are waiting for the answer, `asked_at` (ISO 8601 or epoch; default: `ts`)                 |
 
 - **Keep the plan current** by rewriting the whole file (keep `plan` and `questions` in every
   write, or they disappear). Starting a step: set it `active`, set `step` to its id, mark the
   previous one `done`.
+- **Mark each step `done` (or `skipped`) when you finish it.** Working out of order is fine; the
+  observatory never infers that a step is done, so the progress only counts what you marked. A
+  step that has edits but was never marked done shows a dashed ring ("worked on, not marked
+  done") instead of a check.
 - **The human answers in your chat**, not in the observatory. Ask there too; the question card
   just makes sure it is not missed. Once answered, **resolve** it: remove it from `questions` (or
   set `"resolved": true`).
@@ -118,11 +122,11 @@ The CLI below does all of this for you and keeps the plan and questions on every
 ```bash
 S="node ~/work/grok-coding-observatory/bin/status.mjs --agent grok"   # or: grok-observatory --agent grok
 $S plan set "Read the cart code" "Add discount codes" "Write tests" "Update the README"
-$S step start 1                    # current step (the previous active step becomes done)
+$S step start 1                    # current step (the previous active step becomes done; earlier open steps are listed as a hint)
 $S step start 2 "DISCOUNTS table"  # optional note
 $S ask "Should discount codes stack with sales?" --option "Yes, apply both" --option "No, best price wins" --blocking   # prints q1
 $S resolve q1                      # after the human answered
-$S step done                       # current step done; also: step skip 3, plan add "…", plan clear
+$S step done                       # current step done; also: step done 2, step skip 3, plan add "…", plan clear
 $S done "Discount codes added, tests pass"
 ```
 

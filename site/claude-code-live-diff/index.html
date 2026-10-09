@@ -264,7 +264,8 @@ mkdir -p "$d" &amp;&amp; printf '{"state":"%s","message":"%s","agent":"claude"}\
 For a task with several steps, mirror your to-do list into the status file
 (.git/observatory/status/claude.json, see docs/AGENT-PROTOCOL.md in
 grok-coding-observatory) as "plan" (id, title, state: pending|active|done|skipped)
-with "step" set to the current step id. Put questions for me in "questions"
+with "step" set to the current step id. Mark each step done or skipped when
+you finish it (out of order is fine). Put questions for me in "questions"
 (id, text, options, blocking: true if you are waiting) and still ask them in
 the chat; remove a question once I have answered it.</code></pre>
           <p>

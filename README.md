@@ -99,7 +99,8 @@ Shortcuts are ignored while you type in an input.
 
    > For multi-step tasks, also publish your plan, keep the current step up to date and put
    > questions for me in the same status file (`plan`, `step`, `questions`), as described in
-   > docs/AGENT-PROTOCOL.md of grok-coding-observatory. Still ask the question in the chat.
+   > docs/AGENT-PROTOCOL.md of grok-coding-observatory. Mark each step done or skipped when you
+   > finish it (working out of order is fine). Still ask the question in the chat.
 
    The bundled CLI does the bookkeeping: `plan set`, `step start 2`, `ask … --blocking`,
    `resolve q1` (see the protocol).

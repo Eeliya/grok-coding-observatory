@@ -28,6 +28,25 @@ export const STEP_ICONS = {
 /** Key identifying one step of one agent (filters and per-step edit counts). */
 export const stepKey = (agent, id) => `${agent}\u0000${id}`;
 
+/**
+ * The plan as it should be shown. States are never inferred as done (agents may work out of
+ * order), only flagged:
+ * - the current step (the `step` field) is active unless it is explicitly done or skipped;
+ * - a step that is not current but has edits linked to it (or is still marked active) and was
+ *   not marked done/skipped gets `open: true` ("worked on, not marked done").
+ * `counts` maps stepKey(agent, id) to edit counts. Returns new objects; the input is untouched.
+ */
+export function displayPlan(plan, current, counts = new Map(), agent = '') {
+  return (Array.isArray(plan) ? plan : []).map((s) => {
+    if (current != null && current !== '' && s.id === current)
+      return s.state === 'done' || s.state === 'skipped' ? s : { ...s, state: 'active' };
+    const edits = counts.get(stepKey(agent, s.id)) ?? 0;
+    if (s.state === 'active' || (s.state === 'pending' && edits > 0))
+      return { ...s, state: 'pending', open: true };
+    return s;
+  });
+}
+
 /** Done/total counts and the current step of an agent's plan (null without a plan). */
 export function planSummary(a) {
   const plan = Array.isArray(a?.plan) ? a.plan : [];
@@ -83,19 +102,20 @@ export function renderPlanPanel(agents, opts = {}) {
   const sections = withPlans.map((a) => {
     const sum = planSummary(a);
     const pct = Math.round((100 * sum.done) / sum.total);
-    const steps = a.plan
+    const steps = displayPlan(a.plan, a.step, counts, a.agent)
       .map((s, i) => {
         const k = stepKey(a.agent, s.id);
         const n = counts.get(k) ?? 0;
         const selected = filter && filter.agent === a.agent && filter.id === s.id;
         const cur = s.id === a.step;
-        const tip = `Step ${i + 1}: ${s.title} (${s.state}${cur ? ', current' : ''})${s.note ? ` — ${s.note}` : ''}${
+        const state = s.open ? "has edits but the agent hasn't marked it done" : s.state;
+        const tip = `Step ${i + 1}: ${s.title} (${state}${cur ? ', current' : ''})${s.note ? ` — ${s.note}` : ''}${
           n ? ` · ${n} edit${n === 1 ? '' : 's'} — click to highlight them` : ''
         }`;
         return (
-          `<li class="ps ps-${esc(s.state)}${cur ? ' ps-current' : ''}${selected ? ' selected' : ''}" ` +
+          `<li class="ps ps-${esc(s.state)}${s.open ? ' ps-open' : ''}${cur ? ' ps-current' : ''}${selected ? ' selected' : ''}" ` +
           `data-agent="${esc(a.agent)}" data-step="${esc(s.id)}" title="${esc(tip)}" tabindex="0" role="button">` +
-          `${icon(STEP_ICONS[s.state] ?? 'circle', 'ps-icon')}` +
+          `${icon(s.open ? 'circle-dashed' : (STEP_ICONS[s.state] ?? 'circle'), 'ps-icon')}` +
           `<span class="ps-n">${i + 1}</span>` +
           `<span class="ps-title">${esc(s.title)}${s.note && cur ? `<span class="ps-note">${esc(s.note)}</span>` : ''}</span>` +
           (n ? `<span class="ps-count">${n}</span>` : '') +

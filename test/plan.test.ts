@@ -2,7 +2,7 @@
 // the HTTP API, edits attributed to the current step, and the UI view helpers (public/plan-view.js).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, execFileSync, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -25,6 +25,8 @@ import {
   questionCounts,
   renderPlanPanel,
   renderQuestionCards,
+  displayPlan,
+  stepKey,
   stepTitle,
 } from '../public/plan-view.js';
 
@@ -276,6 +278,40 @@ test('CLI: plan set / step start / ask / resolve, and status updates keep the pl
   assert.equal((await readFile()).plan, undefined);
 });
 
+test('CLI: working out of order never ticks steps, but hints at the open ones', async () => {
+  const as = (...args: string[]) =>
+    spawnSync(process.execPath, [CLI, ...args, '--repo', repo, '--agent', 'jumper'], {
+      encoding: 'utf8',
+    });
+  const file = async () =>
+    JSON.parse(fs.readFileSync(path.join(await statusDir(repo), 'jumper.json'), 'utf8'));
+  as('plan', 'set', 'A', 'B', 'C', 'D', 'E', 'F');
+  as('step', 'skip', '3');
+  assert.match(
+    as('step', 'start', '2').stderr,
+    /^Step 1 is still open; mark them with `step done <n>` or `step skip <n>`/,
+  );
+  const r = as('step', 'start', '6');
+  assert.equal(r.status, 0);
+  assert.match(r.stderr, /Steps 1, 4-5 are still open/);
+  const f = await file();
+  assert.deepEqual(
+    f.plan.map((s: any) => s.state),
+    ['pending', 'done', 'skipped', 'pending', 'pending', 'active'],
+    'open steps are left alone (only the previously active one is finished, as before)',
+  );
+  as('step', 'done', '1');
+  as('step', 'skip', '4');
+  as('step', 'done', '5');
+  assert.equal(as('step', 'start', '6').stderr, '', 'no hint once everything before is marked');
+  as('plan', 'clear');
+  as('idle');
+  await until(() => {
+    const j = lastStatus()?.agents?.find((a: any) => a.agent === 'jumper');
+    return j && j.state === 'idle' && !j.plan;
+  }, 'jumper cleared');
+});
+
 test('writeStatus (HTTP API) keeps an existing plan and accepts new fields', async () => {
   const dir = path.join(tmp, 'http-plan');
   await writeStatus(dir, { state: 'working', agent: 'h', plan: [{ title: 'A' }], step: '1' });
@@ -328,6 +364,63 @@ test('server: edits are attributed to the step that was current when they happen
     ['1', '2', null],
   );
   assert.ok(history.items.some((i: any) => i.kind === 'step' && i.ref === '2'));
+});
+
+test('plan-view: steps worked on but not marked done are flagged, never counted', () => {
+  const plan = [
+    'pending',
+    'pending',
+    'skipped',
+    'pending',
+    'pending',
+    'pending',
+    'pending',
+    'pending',
+  ].map((state, i) => ({ id: String(i + 1), title: `S${i + 1}`, state }));
+  // Edits on steps 1, 2, 4, 5 and 6; nothing marked done; step 6 is current.
+  const counts = new Map(
+    [
+      ['1', 3],
+      ['2', 47],
+      ['4', 42],
+      ['5', 17],
+      ['6', 17],
+    ].map(([id, n]) => [stepKey('website', id as string), n as number]),
+  );
+  const shown = displayPlan(plan, '6', counts, 'website');
+  assert.deepEqual(
+    shown.map((s: any) => (s.open ? 'open' : s.state)),
+    ['open', 'open', 'skipped', 'open', 'open', 'active', 'pending', 'pending'],
+  );
+  assert.equal(plan[0].state, 'pending', 'input untouched');
+  const agent = { agent: 'website', state: 'working', ts: 1, plan, step: '6' };
+  const sum = planSummary(agent);
+  assert.deepEqual([sum!.done, sum!.total, sum!.current!.n], [1, 8, 6], 'only skipped counts');
+  const html = renderPlanPanel([agent], { counts });
+  assert.match(html, /1\/8 done/);
+  assert.equal((html.match(/ps-pending ps-open/g) ?? []).length, 4);
+  assert.equal((html.match(/icon-circle-dashed/g) ?? []).length, 4);
+  assert.match(html, /has edits but the agent hasn&#39;t marked it done/);
+  assert.match(html, /ps-active ps-current/);
+  assert.doesNotMatch(html, /ps-done/);
+
+  // Without edits a pending step stays a plain empty circle; the step field makes its step
+  // active; a stale "active" elsewhere is shown as open; explicit done stays done.
+  const stale = [
+    { id: '1', title: 'A', state: 'active' },
+    { id: '2', title: 'B', state: 'pending' },
+    { id: '3', title: 'C', state: 'pending' },
+    { id: '4', title: 'D', state: 'done' },
+  ];
+  assert.deepEqual(
+    displayPlan(stale, '2').map((s: any) => (s.open ? 'open' : s.state)),
+    ['open', 'active', 'pending', 'done'],
+  );
+  assert.deepEqual(
+    displayPlan([{ id: '1', title: 'A', state: 'done' }], '1').map((s: any) => s.state),
+    ['done'],
+  );
+  assert.deepEqual(displayPlan(undefined, '1'), []);
 });
 
 test('plan-view: summary, counts, filter and rendering', () => {

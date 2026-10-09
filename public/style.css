@@ -1365,6 +1365,14 @@ body.resizing aside {
 .ps-pending .ps-icon {
   color: var(--faint);
 }
+/* Worked on (has edits) but not marked done: a dashed lime ring, not counted as done */
+.ps-open .ps-icon {
+  color: var(--accent);
+  opacity: 0.85;
+}
+.ps-open .ps-title {
+  color: var(--text-2);
+}
 .ps-active .ps-icon {
   color: var(--accent);
 }

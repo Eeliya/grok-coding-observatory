@@ -18,7 +18,8 @@ Plan (optional; shown as a checklist, edits are grouped by the current step):
   plan set "Step one" "Step two" …   replace the plan (all steps pending, ids 1, 2, …)
   plan add "Another step"            append a step
   plan clear                         remove the plan
-  step start <id|n> [note]           make a step current (a previously active step becomes done)
+  step start <id|n> [note]           make a step current (a previously active step becomes done;
+                                     earlier steps never marked done/skipped are listed as a hint)
   step done [id|n]                   mark a step done (default: the current one)
   step skip <id|n>                   mark a step skipped
 
@@ -118,6 +119,30 @@ function findStep(ref) {
   fail(`no step "${ref}" in the plan (${list.map((s) => s.id).join(', ') || 'no plan'})`);
 }
 const words = (list) => list.join(' ').trim();
+/** "1-3, 5" for step positions [1, 2, 3, 5]. */
+function ranges(ns) {
+  const out = [];
+  for (const n of ns) {
+    const last = out.at(-1);
+    if (last && n === last[1] + 1) last[1] = n;
+    else out.push([n, n]);
+  }
+  return out.map(([a, z]) => (a === z ? `${a}` : `${a}-${z}`)).join(', ');
+}
+/** Working out of order is fine, but a forgotten "step done" leaves the checklist behind: hint. */
+function hintOpenBefore(target) {
+  const list = steps();
+  const open = [];
+  for (const [i, s] of list.entries()) {
+    if (s === target) break;
+    if (s.state === 'pending' || s.state == null) open.push(i + 1);
+  }
+  if (!open.length) return;
+  const which = open.length === 1 ? `Step ${open[0]} is` : `Steps ${ranges(open)} are`;
+  process.stderr.write(
+    `${which} still open; mark them with \`step done <n>\` or \`step skip <n>\` if finished.\n`,
+  );
+}
 
 if (['working', 'done', 'idle'].includes(cmd)) {
   state = cmd;
@@ -147,6 +172,7 @@ if (['working', 'done', 'idle'].includes(cmd)) {
     const target = findStep(ref);
     for (const s of steps()) if (s !== target && s.state === 'active') s.state = 'done';
     target.state = 'active';
+    hintOpenBefore(target);
     if (note.length) target.note = words(note);
     status.step = String(target.id);
     state = 'working';

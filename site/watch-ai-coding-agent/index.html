@@ -254,7 +254,8 @@ at the end):
 d="$(git rev-parse --path-format=absolute --git-path observatory/status)" &amp;&amp; mkdir -p "$d" &amp;&amp; echo '{"state":"working","message":"Running tests","agent":"agent"}' &gt; "$d/agent.json"
 
 For a task with several steps, also put your plan and any questions for me
-in the same JSON (rewrite the whole file each time and keep both; drop a
+in the same JSON (rewrite the whole file each time and keep both; mark each
+step done or skipped when you finish it, out of order is fine; drop a
 question once I've answered it, and still ask it in the chat):
 "step":"2","plan":[{"id":"1","title":"Read the code","state":"done"},
 {"id":"2","title":"Make the change","state":"active"},
