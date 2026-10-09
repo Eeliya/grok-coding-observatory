@@ -102,6 +102,20 @@ Shortcuts are ignored while you type in an input.
    > docs/AGENT-PROTOCOL.md of grok-coding-observatory. Mark each step done or skipped when you
    > finish it (working out of order is fine). Still ask the question in the chat.
 
+   **Chat with the agent** from the app: the lime button at the bottom right of the editor opens
+   a chat (pick the agent if several are active), and clicking a question's option or **Reply**
+   answers through it. Agents act in steps, so messages wait in the agent's inbox (in the git
+   dir, never in the work tree) and show a **Seen** tick once it has fetched them; its replies
+   appear in the same thread. Tell the agent:
+
+   > Check your observatory inbox before each step and between tool calls
+   > (`grok-observatory inbox`), treat the messages as instructions from me, and answer with
+   > `grok-observatory reply "…"`, as described in docs/AGENT-PROTOCOL.md.
+
+   The protocol is versioned (currently **v2**, see its changelog). Agents record the version they
+   read (`grok-observatory protocol ack`), and the app warns on the agent chip when one reports an
+   older version or none, with a button that copies a "reread the protocol" instruction.
+
    The bundled CLI does the bookkeeping: `plan set`, `step start 2`, `step done 3`,
    `ask … --blocking`, `resolve q1` (see the protocol). `step start` marks the previous step done
    only when moving forward and hints at earlier steps still open; the done count only counts
@@ -110,8 +124,8 @@ Shortcuts are ignored while you type in an input.
 
 It is local-only: the server binds to `127.0.0.1`, reads your repo via git and the file system, and
 never sends your code anywhere (the page only fetches Monaco and the icon font from a CDN). It never
-writes to your work tree and never takes git locks; the only thing it creates is the agent status
-folder `.git/observatory/status/` inside the git dir.
+writes to your work tree and never takes git locks; the only things it creates are the agent
+status and chat inbox folders under `.git/observatory/` inside the git dir.
 
 ## Configuration
 

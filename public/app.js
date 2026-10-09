@@ -3,6 +3,14 @@ import { insertAt, nextChunkEnd, prepareHunk } from './replay.js';
 import { changeSize, effectiveCps } from './playback-policy.js';
 import { clampWidth, keyStep, panelBounds } from './panel-size.js';
 import {
+  chatTargets,
+  protocolInstruction,
+  protocolNotice,
+  questionAnswer,
+  renderThread,
+  unreadReplies,
+} from './chat-view.js';
+import {
   countEditsByStep,
   editMatchesStep,
   planSummary,
@@ -156,7 +164,23 @@ const $ = (id) => document.getElementById(id);
 const icon = (name, cls = '') =>
   `<i class="icon-${name}${cls ? ` ${cls}` : ''}" aria-hidden="true"></i>`;
 // Agent status files (docs/AGENT-PROTOCOL.md), as last sent by the server.
-const agentStatus = { agents: [], problems: [], log: [], offset: 0, staleTimer: 0 };
+const agentStatus = {
+  agents: [],
+  problems: [],
+  log: [],
+  offset: 0,
+  staleTimer: 0,
+  protocol: null, // { version, doc, cli, url } of this observatory
+};
+// Human → agent chat through per-agent inbox files (docs/AGENT-PROTOCOL.md, "Inbox").
+const chat = {
+  threads: {},
+  open: false,
+  target: null,
+  re: null,
+  sending: false,
+  questions: new Map(), // agent -> Map(id -> text): questions seen on this page, for reply quotes
+};
 const state = {
   queue: [],
   playing: false,
@@ -429,6 +453,8 @@ function connect() {
       renderTimeline();
     } else if (msg.type === 'status') {
       setAgentStatus(msg);
+    } else if (msg.type === 'inbox') {
+      setInbox(msg);
     } else if (msg.type === 'marker') {
       addToTimeline(msg.marker);
     } else if (msg.type === 'change') {
@@ -1572,6 +1598,7 @@ window.addEventListener(
     if (e.key === 'Escape') {
       if (!$('as-pop').hidden) toggleStatusPop(false);
       else if (!$('picker').hidden) closePicker();
+      else if (chat.open) closeChat();
       else if (state.mode !== 'live') backToLive();
       else if (state.paused) togglePause();
       return;
@@ -1761,7 +1788,15 @@ function setAgentStatus(msg) {
   agentStatus.problems = msg.problems ?? [];
   agentStatus.log = msg.log ?? [];
   agentStatus.offset = (msg.serverTime ?? Date.now()) - Date.now();
+  agentStatus.protocol = msg.protocol ?? null;
+  for (const a of agentStatus.agents) {
+    for (const q of a.questions ?? []) {
+      if (!chat.questions.has(a.agent)) chat.questions.set(a.agent, new Map());
+      chat.questions.get(a.agent).set(q.id, q.text);
+    }
+  }
   renderAgentStatus();
+  renderChat();
 }
 
 function renderAgentStatus() {
@@ -1783,6 +1818,7 @@ function renderAgentStatus() {
       .join('') +
     (views.length > 3 ? `<span class="as-more">+${views.length - 3}</span>` : '') +
     questionBadge() +
+    protocolBadge(views) +
     (agentStatus.problems.length
       ? `<span class="as-problem" title="A status file could not be read">${icon('file-warning')}</span>`
       : '');
@@ -1794,6 +1830,7 @@ function renderAgentStatus() {
         )
         .join('\n') +
       questionTitle() +
+      protocolTitle(views) +
       '\nClick for recent activity'
     : 'Agent status problems — click for details';
   // Flip to "possibly stalled" right when the next working status runs out, not on the next tick.
@@ -1829,7 +1866,12 @@ function renderStatusPop(views = agentStatus.agents.map(agentView)) {
               : 'Plan'
           } · ${sum.done}/${sum.total} done</span></li>`
         : '';
-      return `<li class="as-seg ${v.view}" title="${esc(`${v.agent}: ${v.view === 'stale' ? 'possibly stalled' : v.view}${v.message ? ` — ${v.message}` : ''} (${v.ago})`)}">${agentLabel(v, true)}</li>${plan}`;
+      const pn = protocolNotice(v, agentStatus.protocol);
+      const proto = pn
+        ? `<li class="as-proto-row ${pn.level}" title="${esc(pn.text)}">${icon('book-alert')}<span class="as-msg">${esc(pn.text)}</span>` +
+          `<button class="as-proto-copy" type="button" data-agent="${esc(v.agent)}" title="Copy an instruction to paste into ${esc(v.agent)}'s chat: reread the protocol, use the inbox, record the version">${icon('copy')} Copy instruction</button></li>`
+        : '';
+      return `<li class="as-seg ${v.view}" title="${esc(`${v.agent}: ${v.view === 'stale' ? 'possibly stalled' : v.view}${v.message ? ` — ${v.message}` : ''} (${v.ago})`)}">${agentLabel(v, true)}</li>${plan}${proto}`;
     })
     .join('');
   const log = agentStatus.log
@@ -1927,7 +1969,9 @@ function renderPlan() {
 function renderQuestions() {
   const box = $('questions');
   if (!box) return;
-  const html = renderQuestionCards(agentStatus.agents, Date.now() + agentStatus.offset);
+  const html = renderQuestionCards(agentStatus.agents, Date.now() + agentStatus.offset, {
+    answerOf: (agent, id) => questionAnswer(chat.threads, agent, id),
+  });
   box.hidden = !html;
   if (box.innerHTML !== html) box.innerHTML = html;
 }
@@ -1962,19 +2006,23 @@ function setupPlan() {
     }
   });
   $('questions').addEventListener('click', async (e) => {
-    const btn = e.target.closest('.q-copy');
-    if (!btn) return;
-    const card = btn.closest('.q-card');
+    const card = e.target.closest('.q-card');
+    if (!card) return;
     const q = openQuestions(agentStatus.agents).find(
       (x) => x.agent === card.dataset.agent && x.id === card.dataset.q,
     );
     if (!q) return;
+    const opt = e.target.closest('.q-opt');
+    if (opt) return openChat({ agent: q.agent, re: q, text: q.options?.[Number(opt.dataset.i)] });
+    if (e.target.closest('.q-reply')) return openChat({ agent: q.agent, re: q, text: '' });
+    const btn = e.target.closest('.q-copy');
+    if (!btn) return;
     try {
       await navigator.clipboard.writeText(questionClipboard(q));
       btn.classList.add('copied');
-      btn.lastChild.textContent = ' Copied';
+      btn.title = "Copied — paste it into the agent's chat";
     } catch {
-      btn.lastChild.textContent = ' Copy failed';
+      btn.title = 'Copy failed';
     }
   });
 }
@@ -1988,8 +2036,221 @@ function setupAgentStatus() {
   document.addEventListener('click', (e) => {
     if (!$('as-pop').hidden && !$('agent-status').contains(e.target)) toggleStatusPop(false);
   });
+  $('as-pop').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.as-proto-copy');
+    if (!btn) return;
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(
+        protocolInstruction(agentStatus.protocol, btn.dataset.agent),
+      );
+      btn.innerHTML = `${icon('check')} Copied`;
+      btn.classList.add('copied');
+    } catch {
+      btn.textContent = 'Copy failed';
+    }
+  });
   setInterval(renderAgentStatus, 5000); // "2m ago" ages move on without new messages
 }
+
+function protocolBadge(views) {
+  const n = views.filter((v) => protocolNotice(v, agentStatus.protocol)).length;
+  if (!n) return '';
+  return `<span class="as-proto" title="${esc(protocolTitle(views).trim())}">${icon('book-alert')}</span>`;
+}
+
+function protocolTitle(views) {
+  const lines = views
+    .map((v) => [v.agent, protocolNotice(v, agentStatus.protocol)])
+    .filter(([, n]) => n)
+    .map(([agent, n]) => `${agent}: ${n.text}`);
+  return lines.length ? `\n${lines.join('\n')}` : '';
+}
+
+// ------------------------------------------------------------------ chat (inbox)
+
+const chatSeenKey = () => `observatory.chatSeen:${state.target ?? ''}`;
+function chatSeen() {
+  try {
+    return JSON.parse(localStorage.getItem(chatSeenKey()) ?? '{}') ?? {};
+  } catch {
+    return {};
+  }
+}
+function markChatSeen(agent) {
+  const thread = chat.threads[agent] ?? [];
+  const last = thread.reduce((t, m) => (m.from === 'agent' ? Math.max(t, m.ts) : t), 0);
+  const seen = chatSeen();
+  if (last && (seen[agent] ?? 0) < last) {
+    seen[agent] = last;
+    localStorage.setItem(chatSeenKey(), JSON.stringify(seen));
+  }
+}
+
+function setInbox(msg) {
+  chat.threads = msg.threads ?? {};
+  renderChat();
+  renderQuestions();
+}
+
+/** The agent the chat writes to: the user's pick while it exists, else the most recent one. */
+function chatTarget() {
+  const targets = chatTargets(agentStatus.agents, chat.threads);
+  if (chat.target && targets.includes(chat.target)) return chat.target;
+  return targets[0] ?? null;
+}
+
+function renderChat() {
+  const targets = chatTargets(agentStatus.agents, chat.threads);
+  const seen = chatSeen();
+  const target = chatTarget();
+  if (chat.open && target) markChatSeen(target);
+  // FAB badge: agent replies you have not looked at yet.
+  const unread = targets.reduce((n, a) => n + unreadReplies(chat.threads[a], seen[a]), 0);
+  const badge = $('chat-badge');
+  badge.hidden = !unread || chat.open;
+  badge.textContent = String(unread);
+  const fab = $('chat-fab');
+  fab.title = unread
+    ? `${unread} new repl${unread === 1 ? 'y' : 'ies'} from the agent`
+    : 'Chat with the agent (messages wait in its inbox)';
+  const sel = $('chat-agent');
+  const opts = targets
+    .map((a) => {
+      const n = a === target ? 0 : unreadReplies(chat.threads[a], seen[a]);
+      return `<option value="${esc(a)}"${a === target ? ' selected' : ''}>${esc(a)}${n ? ` (${n} new)` : ''}</option>`;
+    })
+    .join('');
+  if (sel.innerHTML !== opts) sel.innerHTML = opts || '<option value="">no agent yet</option>';
+  sel.disabled = targets.length < 2;
+  if (!chat.open) return;
+  const known = [...(chat.questions.get(target) ?? new Map())].map(([id, text]) => ({ id, text }));
+  const box = $('chat-thread');
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  const html = renderThread(chat.threads[target] ?? [], {
+    agent: target ?? 'agent',
+    questions: known,
+  });
+  if (box.innerHTML !== html) {
+    box.innerHTML = html;
+    if (atBottom || chat.scrollNext) box.scrollTop = box.scrollHeight;
+    chat.scrollNext = false;
+  }
+  const reBox = $('chat-reply-to');
+  const re = chat.re && chat.re.agent === target ? chat.re : null;
+  reBox.hidden = !re;
+  if (re) $('chat-reply-text').textContent = `Answering ${re.id}: ${re.text}`;
+  $('chat-input').placeholder = target
+    ? `Message ${target}…`
+    : 'No agent has reported a status yet';
+  $('chat-input').disabled = !target;
+  $('chat-hint').textContent = target
+    ? `${target} reads this when it checks its inbox between steps. Enter sends, Shift+Enter for a new line.`
+    : 'Agents appear here once they report a status (docs/AGENT-PROTOCOL.md).';
+  updateChatSend();
+}
+
+function updateChatSend() {
+  const v = $('chat-input').value.trim();
+  $('chat-send').disabled = !v || chat.sending || !chatTarget() || v.length > 4000;
+}
+
+function openChat({ agent, re = null, text } = {}) {
+  if (agent) chat.target = agent;
+  chat.re = re ? { agent: re.agent, id: re.id, text: re.text } : chat.re;
+  chat.open = true;
+  chat.scrollNext = true;
+  $('chat').hidden = false;
+  $('chat-fab').hidden = true;
+  $('chat-fab').setAttribute('aria-expanded', 'true');
+  const input = $('chat-input');
+  if (text !== undefined) input.value = text;
+  renderChat();
+  autosizeChat();
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+function closeChat() {
+  chat.open = false;
+  $('chat').hidden = true;
+  $('chat-fab').hidden = false;
+  $('chat-fab').setAttribute('aria-expanded', 'false');
+  renderChat();
+  $('chat-fab').focus();
+}
+
+function autosizeChat() {
+  const input = $('chat-input');
+  input.style.height = 'auto';
+  input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+}
+
+async function sendChat() {
+  const input = $('chat-input');
+  const text = input.value.trim();
+  const agent = chatTarget();
+  if (!text || !agent || chat.sending) return;
+  const re = chat.re && chat.re.agent === agent ? chat.re.id : undefined;
+  chat.sending = true;
+  updateChatSend();
+  try {
+    const res = await fetch('/api/inbox', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ agent, text, ...(re ? { re } : {}) }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    input.value = '';
+    chat.re = null;
+    chat.scrollNext = true;
+    // Show it right away; the inbox broadcast follows.
+    const thread = (chat.threads[agent] ??= []);
+    if (!thread.some((m) => m.id === body.message.id)) thread.push(body.message);
+    renderChat();
+    renderQuestions();
+    $('chat-hint').classList.remove('error');
+  } catch (err) {
+    $('chat-hint').textContent = `Not sent: ${err.message}`;
+    $('chat-hint').classList.add('error');
+  } finally {
+    chat.sending = false;
+    autosizeChat();
+    updateChatSend();
+  }
+}
+
+function setupChat() {
+  $('chat-fab').addEventListener('click', () => openChat());
+  $('chat-close').addEventListener('click', closeChat);
+  $('chat-agent').addEventListener('change', (e) => {
+    chat.target = e.target.value || null;
+    chat.scrollNext = true;
+    renderChat();
+  });
+  $('chat-reply-clear').addEventListener('click', () => {
+    chat.re = null;
+    renderChat();
+  });
+  const input = $('chat-input');
+  input.addEventListener('input', () => {
+    autosizeChat();
+    updateChatSend();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      void sendChat();
+    }
+  });
+  $('chat-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    void sendChat();
+  });
+  renderChat();
+}
+setupChat();
 
 require.config({ paths: { vs: `${MONACO_BASE}/vs` } });
 require(['vs/editor/editor.main'], () => {

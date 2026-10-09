@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { PROTOCOL_INFO, parseProtocolVersion } from './protocol.ts';
 import { git } from './git.ts';
 
 export const STATUS_STATES = ['working', 'done', 'idle'] as const;
@@ -30,6 +31,8 @@ export interface AgentStatus {
   step?: string | null;
   /** Open questions for the human (resolved ones are left out). */
   questions?: Question[];
+  /** docs/AGENT-PROTOCOL.md version the agent last read (absent: never reported). */
+  protocol_version?: number;
 }
 export const STEP_STATES = ['pending', 'active', 'done', 'skipped'] as const;
 export type StepState = (typeof STEP_STATES)[number];
@@ -136,6 +139,8 @@ export function parseStatus(text: string, fallbackAgent: string, mtimeMs: number
     ts: parseTs(d.ts) ?? mtimeMs,
     ttl: Number.isFinite(ttl) && ttl > 0 ? Math.min(ttl, 7 * 24 * 3600) : DEFAULT_TTL_S,
   };
+  const pv = parseProtocolVersion(d.protocol_version);
+  if (pv !== undefined) status.protocol_version = pv;
   const ts = status.ts;
   const plan = parsePlan(d.plan);
   if (plan) {
@@ -272,6 +277,12 @@ export async function writeStatus(dir: string, input: Record<string, unknown>) {
     if (prev && typeof prev === 'object' && !Array.isArray(prev)) existing = prev;
   } catch {
     // no previous file (or unreadable): nothing to keep
+  }
+  const pv = 'protocol_version' in input ? input.protocol_version : existing.protocol_version;
+  if (pv != null && pv !== '') {
+    const n = parseProtocolVersion(pv);
+    if (n === undefined) throw new Error('"protocol_version" must be a positive integer');
+    body.protocol_version = n;
   }
   for (const key of ['plan', 'step', 'questions'] as const) {
     const v = key in input ? input[key] : existing[key];
@@ -457,6 +468,7 @@ export class StatusWatcher {
     return {
       dir: this.dir,
       serverTime: Date.now(),
+      protocol: PROTOCOL_INFO,
       agents: this.agents().map((s) => ({ ...s, stale: isStale(s) })),
       problems: this.problems(),
       log: this.log,

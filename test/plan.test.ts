@@ -509,7 +509,17 @@ test('plan-view: summary, counts, filter and rendering', () => {
   assert.match(cards, /q-card blocking/);
   assert.match(cards, /Blocking/);
   assert.match(cards, /asked 3m ago/);
-  assert.match(cards, /<li>Yes<\/li><li>No<\/li>/);
+  assert.match(
+    cards,
+    /<li><button class="q-opt" type="button" data-i="0"[^>]*>Yes<\/button><\/li>/,
+  );
+  assert.match(cards, /class="q-reply"/);
+  assert.doesNotMatch(cards, /q-answered/);
+  const answered = renderQuestionCards(agents, 0, {
+    answerOf: (agent: string, id: string) =>
+      id === 'q2' ? { text: 'No, best price wins', seen: true } : null,
+  });
+  assert.match(answered, /You answered in the chat: <b>No, best price wins<\/b> · seen by/);
   assert.equal(renderQuestionCards([{ agent: 'a' }]), '');
   assert.equal(
     questionClipboard({ agent: 'grok', text: 'Stack?', options: ['Yes', 'No'] }),

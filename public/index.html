@@ -118,6 +118,56 @@
         </div>
         <div id="editor"></div>
         <div id="diff" hidden></div>
+        <button
+          id="chat-fab"
+          class="chat-fab"
+          type="button"
+          title="Chat with the agent (messages wait in its inbox)"
+          aria-controls="chat"
+          aria-expanded="false"
+        >
+          <i class="icon-message-square-text" aria-hidden="true"></i>
+          <span id="chat-badge" class="chat-badge" hidden></span>
+        </button>
+        <section id="chat" class="chat" role="dialog" aria-label="Chat with the agent" hidden>
+          <header class="chat-head">
+            <i class="icon-message-square-text chat-head-icon" aria-hidden="true"></i>
+            <span class="chat-title">Chat</span>
+            <label class="chat-to"
+              ><span class="muted">to</span>
+              <select id="chat-agent" aria-label="Send to agent"></select
+            ></label>
+            <button id="chat-close" class="icon" type="button" title="Close (Esc)">
+              <i class="icon-x" aria-hidden="true"></i>
+            </button>
+          </header>
+          <div id="chat-thread" class="chat-thread" role="log" aria-live="polite"></div>
+          <div id="chat-reply-to" class="chat-reply-to" hidden>
+            <i class="icon-corner-down-right" aria-hidden="true"></i>
+            <span id="chat-reply-text"></span>
+            <button
+              id="chat-reply-clear"
+              class="icon"
+              type="button"
+              title="Not an answer to this question"
+            >
+              <i class="icon-x" aria-hidden="true"></i>
+            </button>
+          </div>
+          <form id="chat-form" class="chat-form">
+            <textarea
+              id="chat-input"
+              rows="1"
+              maxlength="4000"
+              placeholder="Message the agent…"
+              aria-label="Message"
+            ></textarea>
+            <button id="chat-send" class="chat-send" type="submit" title="Send (Enter)" disabled>
+              <i class="icon-send-horizontal" aria-hidden="true"></i>
+            </button>
+          </form>
+          <div id="chat-hint" class="chat-hint muted"></div>
+        </section>
       </section>
       <div
         id="tl-resizer"

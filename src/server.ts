@@ -16,6 +16,8 @@ import {
   writeStatus,
   type StatusLogEntry,
 } from './status.ts';
+import { InboxWatcher, appendMessage, inboxDir } from './inbox.ts';
+import { PROTOCOL_INFO } from './protocol.ts';
 import { REPOS_ROOT, loadState, rememberRepo, resolveRepo, scanRepos } from './repos.ts';
 
 export type { ChangeEvent, ChangedFile, HeadInfo } from './session.ts';
@@ -110,15 +112,34 @@ function onSessionMessage(message: object) {
 
 let session: Session | null = null;
 let statusWatcher: StatusWatcher | null = null;
+let inboxWatcher: InboxWatcher | null = null;
 
 const emptyStatus = () => ({
   dir: null,
   serverTime: Date.now(),
+  protocol: PROTOCOL_INFO,
   agents: [],
   problems: [],
   log: [],
 });
 const statusSnapshot = () => statusWatcher?.snapshot() ?? emptyStatus();
+const inboxSnapshot = () => inboxWatcher?.snapshot() ?? { dir: null, threads: {} };
+
+function onInboxChange(w: InboxWatcher) {
+  if (w === inboxWatcher) broadcast({ type: 'inbox', ...w.snapshot() });
+}
+
+/** The chat inbox is optional too. */
+async function startInboxWatcher(target: string): Promise<InboxWatcher | null> {
+  try {
+    const w = new InboxWatcher(await inboxDir(target), onInboxChange);
+    await w.start();
+    return w;
+  } catch (err) {
+    console.warn('Agent inbox disabled:', (err as Error).message);
+    return null;
+  }
+}
 
 /** Agent status files changed: timeline markers for state transitions, then tell clients. */
 function onStatusChange(w: StatusWatcher, transitions: StatusLogEntry[]) {
@@ -162,10 +183,13 @@ function switchTo(input: string): Promise<Session> {
     const next = new Session({ ...ref, emit: onSessionMessage, nextId: () => ++eventId });
     await next.start(); // if this throws, the current session keeps running
     const nextStatus = await startStatusWatcher(ref.target);
+    const nextInbox = await startInboxWatcher(ref.target);
     const old = session;
     session = next;
     statusWatcher?.close();
     statusWatcher = nextStatus;
+    inboxWatcher?.close();
+    inboxWatcher = nextInbox;
     await old?.close();
     await rememberRepo(ref.target).catch((err) =>
       console.warn('Could not save recent repos:', (err as Error).message),
@@ -176,6 +200,7 @@ function switchTo(input: string): Promise<Session> {
     clearHistory();
     broadcast({ type: 'reset', reason: 'repo', ...next.info() });
     broadcast({ type: 'status', ...statusSnapshot() });
+    broadcast({ type: 'inbox', ...inboxSnapshot() });
     return next;
   });
   switchQueue = job.catch(() => {});
@@ -215,6 +240,24 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
   }
   const data = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
   return data && typeof data === 'object' ? data : {};
+}
+
+const LOCAL_HOST_RE = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?$/i;
+/**
+ * Writes that reach an agent (chat messages are instructions) must come from a page served by
+ * this machine: loopback peer, a local Host header (no DNS rebinding) and, when the browser
+ * sends one, a local Origin (no cross-site form posts).
+ */
+function isLocalRequest(req: http.IncomingMessage) {
+  if (!isLoopback(req.socket.remoteAddress)) return false;
+  if (!LOCAL_HOST_RE.test(String(req.headers.host ?? ''))) return false;
+  const origin = req.headers.origin;
+  if (origin === undefined) return true;
+  try {
+    return LOCAL_HOST_RE.test(new URL(origin).host);
+  } catch {
+    return false;
+  }
 }
 
 async function listRepos() {
@@ -304,6 +347,32 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 400, { error: (err as Error).message });
       }
     }
+    if (url.pathname === '/api/inbox') {
+      if (req.method === 'GET') return sendJson(res, 200, inboxSnapshot());
+      if (req.method !== 'POST') return sendJson(res, 405, { error: 'GET or POST only' });
+      if (!isLocalRequest(req)) {
+        return sendJson(res, 403, { error: 'chat messages are accepted from this machine only' });
+      }
+      if (!String(req.headers['content-type']).startsWith('application/json')) {
+        return sendJson(res, 415, { error: 'Expected application/json' });
+      }
+      const w = inboxWatcher;
+      if (!w) return sendJson(res, 409, { error: 'no repo selected' });
+      let body;
+      try {
+        body = await readJson(req);
+      } catch (err) {
+        return sendJson(res, 400, { error: (err as Error).message });
+      }
+      try {
+        const message = await appendMessage(w.dir, body);
+        await w.rescan();
+        return sendJson(res, 200, { ok: true, message });
+      } catch (err) {
+        const status = (err as { status?: number }).status ?? 400;
+        return sendJson(res, status, { error: (err as Error).message });
+      }
+    }
     if (url.pathname === '/api/repos') return sendJson(res, 200, await listRepos());
     if (url.pathname === '/api/target') {
       if (req.method !== 'POST') return sendJson(res, 405, { error: 'POST only' });
@@ -374,6 +443,7 @@ wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'files', files: info.files }));
   ws.send(JSON.stringify({ type: 'history', items: history.map(summarize) }));
   ws.send(JSON.stringify({ type: 'status', ...statusSnapshot() }));
+  ws.send(JSON.stringify({ type: 'inbox', ...inboxSnapshot() }));
 });
 
 // ---------------------------------------------------------------- startup
@@ -412,6 +482,7 @@ server.listen(PORT, HOST, () => {
 
 function shutdown() {
   statusWatcher?.close();
+  inboxWatcher?.close();
   void session?.close();
   wss.close();
   server.close(() => process.exit(0));

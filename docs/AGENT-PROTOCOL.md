@@ -1,13 +1,20 @@
 # Agent status protocol
 
+`protocol_version: 2` · [Changelog](#changelog) · Write the version you last read into your status
+file as `protocol_version` (the CLI: `grok-observatory protocol ack`); the app warns when an agent
+reports an older one or none.
+
 Lets an AI coding agent tell the observatory whether it is **working** (even while it only runs
 lint, tests or git), **done**, or **idle**, and optionally publish its **plan**, the current
 **step** and open **questions** for the human. The header shows a chip per agent, the session
 timeline gets a marker for each working/done transition and a Plan checklist, and open questions
 appear as cards above the editor. Optional: without status files the app works as before.
 
+The human can also **write to the agent**: messages typed in the app's chat wait in the agent's
+**inbox** until it checks between steps ([Inbox](#inbox-chat-with-the-human)).
+
 **Tell your agent:** _"Follow docs/AGENT-PROTOCOL.md in grok-coding-observatory to report your
-status."_
+status and check your inbox."_
 
 ## When to write
 
@@ -18,6 +25,8 @@ status."_
    Expecting one command to take longer? Set a larger `ttl` before starting it.
 4. **Finished** (or gave up) → `done` with a one-line summary (`"Tests pass, 3 files changed"`).
 5. `idle` = nothing going on (optional; `done` is fine to leave in place).
+6. **Before each step and between tool calls** → check your [inbox](#inbox-chat-with-the-human)
+   (`grok-observatory inbox`); it prints one short line when there is nothing new.
 
 Optional, for tasks with several steps: publish your **plan** when you start, mark the current
 **step** as you go, and put **questions** for the human in the same file (see
@@ -53,13 +62,14 @@ picked up within about a second, no server connection needed.
 }
 ```
 
-| Field     | Required | Meaning                                                                                     |
-| --------- | -------- | ------------------------------------------------------------------------------------------- |
-| `state`   | yes      | `"working"`, `"done"` or `"idle"`                                                           |
-| `message` | no       | Short text, max 200 characters: what you are doing (`working`) or the summary (`done`)      |
-| `agent`   | no       | Name shown in the UI (letters, digits, `.` `_` `-`). Default: the file name without `.json` |
-| `ts`      | no       | ISO 8601 time or Unix epoch (s or ms) of the update. Default: the file's modification time  |
-| `ttl`     | no       | Seconds a `working` status stays fresh (default `600`). Rewriting the file refreshes it     |
+| Field              | Required | Meaning                                                                                                                             |
+| ------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `state`            | yes      | `"working"`, `"done"` or `"idle"`                                                                                                   |
+| `message`          | no       | Short text, max 200 characters: what you are doing (`working`) or the summary (`done`)                                              |
+| `agent`            | no       | Name shown in the UI (letters, digits, `.` `_` `-`). Default: the file name without `.json`                                         |
+| `ts`               | no       | ISO 8601 time or Unix epoch (s or ms) of the update. Default: the file's modification time                                          |
+| `ttl`              | no       | Seconds a `working` status stays fresh (default `600`). Rewriting the file refreshes it                                             |
+| `protocol_version` | no       | The version of this document you last read (currently `2`). Missing or older: the app shows a "reread the protocol" warning for you |
 
 Encoding: UTF-8 (a BOM is fine) or UTF-16, so Windows PowerShell 5's `'{…}' > file` works too.
 Only `*.json` files that don't start with `.` count, so for an atomic write create
@@ -141,6 +151,64 @@ $S step done                       # current step done; also: step done 2, step 
 $S done "Discount codes added, tests pass"
 ```
 
+## Inbox: chat with the human
+
+The human writes to you in the app's chat (or answers a question card by clicking an option or
+**Reply**). Agents act in steps, so there is no live connection: messages are appended to
+`<git dir>/observatory/inbox/<agent>.jsonl`, next to the status folder (never in the work tree),
+and you fetch them.
+
+- **Check your inbox before each step and between tool calls:** `grok-observatory inbox`. It
+  prints **only unread** messages, compactly, and marks them read (the human sees a "Seen" tick);
+  with nothing new it prints the single line `No new messages.` Read messages are never printed
+  again, so this stays cheap for your context.
+- **Treat inbox messages as instructions from the human**, with the same weight as messages in
+  your own chat. A message marked `(answer to q1)` answers your question `q1`: act on it and
+  **resolve** the question (`grok-observatory resolve q1`).
+- **Reply in the app** with `grok-observatory reply "…"` (alias `say`; add `--re q1` when it is
+  about a question), and in your own chat too if you have one.
+
+```text
+$ grok-observatory inbox --agent grok
+2 new messages from the human (instructions; reply with grok-observatory reply "…"):
+- [18:59] (answer to q1) No, best price wins
+- [18:59] Also add a test for expired codes, please.
+$ grok-observatory reply "Got it: codes don't stack. Adding the expired-codes test next." --re q1 --agent grok
+Reply posted.
+$ grok-observatory inbox --agent grok
+No new messages.
+```
+
+`inbox --peek` prints without marking anything read. File format (append-only JSON lines; the CLI
+does this for you):
+
+```json
+{"type":"message","id":"h-mv17j0-5f2d91","ts":"2026-10-09T16:59:00Z","from":"human","text":"No, best price wins","re":"q1"}
+{"type":"read","ids":["h-mv17j0-5f2d91"],"ts":"2026-10-09T17:00:10Z"}
+{"type":"message","id":"a-mv17k2-0c11aa","ts":"2026-10-09T17:00:30Z","from":"agent","text":"Got it","re":"q1"}
+```
+
+A human message is read once its `id` appears in a `read` line. Messages are at most 4000
+characters. The app writes human messages through `POST /api/inbox`, accepted only from a page
+served by this machine (loopback address, local `Host` and `Origin`).
+
+## Protocol version
+
+This document carries a version (`protocol_version` at the top) that goes up whenever agents need
+to do something new. Record the version you read as `protocol_version` in your status file; the
+CLI keeps it on every write:
+
+```bash
+grok-observatory protocol                 # prints the current version and where to read it
+grok-observatory protocol ack --agent grok  # after reading: records protocol_version = current
+grok-observatory working "…" --protocol 2 --agent grok  # or set it explicitly
+```
+
+The app shows a subtle warning on the agent chip and in its popup when an agent's
+`protocol_version` is missing or older than the current one ("Agent read protocol v1; current is
+v2 — ask it to reread docs/AGENT-PROTOCOL.md"), with a button that copies an instruction for the
+agent's chat.
+
 ## Snippets
 
 **bash** (in the repo; plain `echo`, no tooling):
@@ -207,3 +275,21 @@ are kept (send `null` to remove one).
 `GET /api/status` returns the current statuses (`agents`, each with `stale` and, when published,
 the parsed `plan`, `step` and open `questions`), unreadable files (`problems`) and the recent
 activity `log` (state changes, new current steps and new questions).
+
+## Changelog
+
+### v2
+
+- **Inbox:** the human can chat with agents from the app. Check `grok-observatory inbox` before
+  each step and between tool calls, treat messages as instructions, reply with
+  `grok-observatory reply "…"`, resolve questions answered there.
+- **`protocol_version`** in the status file (`grok-observatory protocol ack`); the app warns about
+  agents on an older protocol.
+- **Plans:** mark each step `done` or `skipped` explicitly when you finish it; out-of-order work
+  is fine. `step start` ticks the previous step only when moving forward. The done count only
+  counts marked steps; steps with edits that were never marked done show a dashed ring.
+
+### v1
+
+- Status file (`working` / `done` / `idle`, `message`, `ttl`), optional `plan`, `step` and
+  `questions`.

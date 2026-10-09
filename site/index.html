@@ -95,7 +95,7 @@
             "name": "Does it change my repository?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "No. It never writes to your work tree and never takes git locks. The only thing it creates is the agent status folder .git/observatory/status/ inside the git dir, which is never committed."
+              "text": "No. It never writes to your work tree and never takes git locks. The only things it creates are the agent status and chat inbox folders under .git/observatory/ inside the git dir, which are never committed."
             }
           },
           {
@@ -474,6 +474,15 @@ npm start -- /path/to/your/repo    # watch that repo right away</code></pre>
               ring.
             </li>
             <li>
+              <strong>Chat:</strong> you can write to the agent from the app. Messages wait in its
+              inbox (inside the git dir) until it runs <code>grok-observatory inbox</code> between
+              steps; you see a <em>Seen</em> tick and its replies in the same thread.
+            </li>
+            <li>
+              The protocol is versioned (currently v2). Agents write the version they read as
+              <code>protocol_version</code>; the app warns about agents on an older one.
+            </li>
+            <li>
               Write it with plain <code>echo</code> in bash, PowerShell, Node, the bundled CLI
               (<code>bin/status.mjs</code>, with <code>plan set</code>, <code>step start</code>,
               <code>ask</code> and <code>resolve</code>) or <code>POST /api/status</code> on the
@@ -549,9 +558,9 @@ npm start -- /path/to/your/repo    # watch that repo right away</code></pre>
             <details>
               <summary><h3>Does it change my repository?</h3></summary>
               <p>
-                No. It never writes to your work tree and never takes git locks. The only thing it
-                creates is the agent status folder <code>.git/observatory/status/</code> inside the
-                git dir, which is never committed.
+                No. It never writes to your work tree and never takes git locks. The only things it
+                creates are the agent status and chat inbox folders under
+                <code>.git/observatory/</code> inside the git dir, which is never committed.
               </p>
             </details>
             <details>

@@ -172,15 +172,35 @@ export function questionClipboard(q) {
   return `${who} asked: ${q.text}${opts ? `\nOptions:\n${opts}` : ''}\nMy answer: `;
 }
 
-/** Question cards HTML ('' when there are none). `now` is the server-adjusted clock. */
-export function renderQuestionCards(agents, now = Date.now()) {
+/**
+ * Question cards HTML ('' when there are none). `now` is the server-adjusted clock.
+ * `answerOf(agent, id)` returns the human's chat answer to a question (or null): answering
+ * goes through the chat inbox (click an option, or Reply).
+ * @param {any[]} agents
+ * @param {number} [now]
+ * @param {{ answerOf?: (agent: string, id: string) => any }} [opts]
+ */
+export function renderQuestionCards(agents, now = Date.now(), { answerOf = () => null } = {}) {
   const qs = openQuestions(agents);
   if (!qs.length) return '';
   return qs
     .map((q) => {
       const who = q.agent && q.agent !== 'agent' ? `<b>${esc(q.agent)}</b> asks` : 'The agent asks';
       const opts = (q.options ?? []).length
-        ? `<ol class="q-opts">${q.options.map((o) => `<li>${esc(o)}</li>`).join('')}</ol>`
+        ? `<ol class="q-opts">${q.options
+            .map(
+              (o, i) =>
+                `<li><button class="q-opt" type="button" data-i="${i}" title="Answer &quot;${esc(o)}&quot; in the chat">${esc(o)}</button></li>`,
+            )
+            .join('')}</ol>`
+        : '';
+      const name = q.agent && q.agent !== 'agent' ? q.agent : 'the agent';
+      const ans = answerOf(q.agent, q.id);
+      const answered = ans
+        ? `<div class="q-answered${ans.seen ? ' seen' : ''}">${icon(ans.seen ? 'check-check' : 'check')}` +
+          `<span>You answered in the chat: <b>${esc(ans.text.length > 80 ? `${ans.text.slice(0, 79)}…` : ans.text)}</b> · ${
+            ans.seen ? `seen by ${esc(name)}` : `waiting for ${esc(name)} to check its inbox`
+          }</span></div>`
         : '';
       const asked = new Date(q.askedAt);
       return (
@@ -191,10 +211,11 @@ export function renderQuestionCards(agents, now = Date.now()) {
           ? `<span class="q-block" title="The agent is waiting for your answer">Blocking</span>`
           : '') +
         `<span class="q-ago" title="Asked at ${esc(asked.toLocaleString())}">asked ${esc(fmtAgo(now - q.askedAt))}</span>` +
-        `<button class="q-copy" type="button" title="Copy the question (and options) to paste into the agent's chat">${icon('copy')} Copy</button>` +
+        `<span class="q-actions"><button class="q-reply" type="button" title="Answer in the observatory chat">${icon('reply')} Reply</button>` +
+        `<button class="q-copy icon" type="button" title="Copy the question (and options) to paste into the agent's own chat">${icon('copy')}</button></span>` +
         `</div>` +
-        `<div class="q-text">${esc(q.text)}</div>${opts}` +
-        `<div class="q-hint">Answer in your chat with the agent; this card stays until it marks the question resolved.</div>` +
+        `<div class="q-text">${esc(q.text)}</div>${opts}${answered}` +
+        `<div class="q-hint">Pick an option or Reply: the answer goes to ${esc(name)}'s inbox, which it checks between steps. The card stays until it resolves the question.</div>` +
         `</div>`
       );
     })

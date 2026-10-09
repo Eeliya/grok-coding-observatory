@@ -247,6 +247,18 @@ question once I've answered it, and still ask it in the chat):
             removes them. Both are optional; the plain status line works without them.
           </p>
           <p>
+            You can also <strong>chat with Cursor</strong> from the app (the lime button at the
+            bottom right). Agents act in steps, so messages wait in its inbox until it checks; add
+            to the instructions:
+            <em
+              >check your observatory inbox before each step (<code
+                >node ~/work/grok-coding-observatory/bin/status.mjs inbox --agent cursor</code
+              >), treat the messages as instructions from me and answer with
+              <code>… reply "…"</code></em
+            >. The app shows a <em>Seen</em> tick once it has read them, and its replies in the same
+            thread.
+          </p>
+          <p>
             If Cursor asks before running terminal commands, allow this one or the chip stays empty.
             The format is described in the
             <a

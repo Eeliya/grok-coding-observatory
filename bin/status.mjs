@@ -1,10 +1,21 @@
 #!/usr/bin/env node
-// Report an agent's status, plan and open questions to Grok Coding Observatory
-// (see docs/AGENT-PROTOCOL.md). Writes <git dir>/observatory/status/<agent>.json in the repo at
-// --repo (default: cwd). No dependencies and no server needed.
+// Report an agent's status, plan and open questions to Grok Coding Observatory, and read the
+// human's chat messages (see docs/AGENT-PROTOCOL.md). Writes <git dir>/observatory/status/<agent>.json
+// and appends to <git dir>/observatory/inbox/<agent>.jsonl in the repo at --repo (default: cwd).
+// No dependencies and no server needed.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
+const PKG_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const PROTOCOL_VERSION = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8'))
+  .observatory.protocolVersion;
+const PROTOCOL_DOC = path.join(PKG_ROOT, 'docs', 'AGENT-PROTOCOL.md');
+const PROTOCOL_URL =
+  'https://github.com/Eeliya/grok-coding-observatory/blob/main/docs/AGENT-PROTOCOL.md';
+const MAX_CHAT_TEXT = 4000;
 
 const USAGE = `Usage: grok-observatory <command> [arguments] [options]
 
@@ -28,14 +39,24 @@ Questions for the human (shown prominently until resolved):
   ask "Should codes stack with sales?" [--option Yes --option No] [--blocking] [--id q1]
   resolve <id|all>                   remove an answered question
 
+Chat with the human (messages typed in the observatory wait in your inbox):
+  inbox [--peek]                     print only unread messages and mark them read
+                                     ("No new messages." when there are none)
+  reply "Done, see the diff" [--re q1]   post a reply in the observatory chat (alias: say)
+
+Protocol:
+  protocol                           print the protocol version and where to read it
+  protocol ack                       record that you read the current version (protocol_version)
+
 Options:
   --agent <name>    agent name (letters, digits, . _ -), default "agent"
   --ttl <seconds>   a working status older than this shows as stalled (default 600)
   --repo <path>     repository to report into (default: current directory)
   -m, --message <t> status message for plan/step/ask commands
   --print           print the status file path and JSON after writing
+  --protocol <n>    set protocol_version (the docs/AGENT-PROTOCOL.md version you read)
 
-Every command keeps the plan and questions already in the file.`;
+Every status command keeps the plan, questions and protocol_version already in the file.`;
 
 function fail(msg) {
   console.error(`grok-observatory: ${msg}\n\n${USAGE}`);
@@ -45,7 +66,7 @@ function fail(msg) {
 const args = process.argv.slice(2);
 const opts = { agent: 'agent', repo: process.cwd(), option: [] };
 const positional = [];
-const VALUE_OPTS = ['agent', 'ttl', 'repo', 'message', 'option', 'id'];
+const VALUE_OPTS = ['agent', 'ttl', 'repo', 'message', 'option', 'id', 're', 'protocol'];
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   if (a === '-h' || a === '--help') {
@@ -53,6 +74,7 @@ for (let i = 0; i < args.length; i++) {
     process.exit(0);
   } else if (a === '--print') opts.print = true;
   else if (a === '--blocking') opts.blocking = true;
+  else if (a === '--peek') opts.peek = true;
   else if (a === '-m' || a.startsWith('--')) {
     const [rawKey, inline] = a === '-m' ? ['message'] : a.slice(2).split(/=(.*)/s);
     const key = rawKey === 'options' ? 'option' : rawKey;
@@ -68,13 +90,41 @@ if (!/^[A-Za-z0-9._-]{1,64}$/.test(opts.agent)) fail('--agent may only use lette
 const [cmd, ...rest] = positional;
 if (!cmd) fail('missing command');
 
+if (cmd === 'protocol' && rest[0] !== 'ack') {
+  // Works anywhere (no repo needed).
+  if (rest.length) fail('protocol takes no arguments except "ack"');
+  console.log(
+    `Observatory agent protocol v${PROTOCOL_VERSION}\n` +
+      `Read: ${PROTOCOL_DOC}\n` +
+      `Online: ${PROTOCOL_URL}\n` +
+      `After reading it: grok-observatory protocol ack --agent ${opts.agent}`,
+  );
+  process.exit(0);
+}
+let protocolOpt;
+if (opts.protocol !== undefined) {
+  protocolOpt = Number(opts.protocol);
+  if (!Number.isInteger(protocolOpt) || protocolOpt < 1)
+    fail('--protocol must be a positive integer');
+}
+
 let dir;
+let inboxDir;
 try {
-  dir = execFileSync(
+  [dir, inboxDir] = execFileSync(
     'git',
-    ['rev-parse', '--path-format=absolute', '--git-path', 'observatory/status'],
+    [
+      'rev-parse',
+      '--path-format=absolute',
+      '--git-path',
+      'observatory/status',
+      '--git-path',
+      'observatory/inbox',
+    ],
     { cwd: path.resolve(opts.repo), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-  ).trim();
+  )
+    .trim()
+    .split(/\r?\n/);
 } catch (err) {
   console.error(
     `grok-observatory: ${path.resolve(opts.repo)} is not a git repository\n${err.stderr ?? ''}`,
@@ -82,6 +132,87 @@ try {
   process.exit(1);
 }
 const file = path.join(dir, `${opts.agent}.json`);
+const inboxFile = path.join(inboxDir, `${opts.agent}.jsonl`);
+
+/** Inbox lines (bad ones skipped): messages and the ids already read. */
+function readInbox() {
+  let text = '';
+  try {
+    text = fs.readFileSync(inboxFile, 'utf8');
+  } catch {
+    // no inbox yet
+  }
+  const messages = [];
+  const read = new Set();
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const d = JSON.parse(line);
+      if (d?.type === 'read' && Array.isArray(d.ids)) for (const id of d.ids) read.add(String(id));
+      else if (d?.type === 'message' && typeof d.text === 'string' && d.id != null)
+        messages.push(d);
+    } catch {
+      // skip
+    }
+  }
+  return { messages, read };
+}
+const appendInbox = (obj) => {
+  fs.mkdirSync(inboxDir, { recursive: true });
+  fs.appendFileSync(inboxFile, JSON.stringify(obj) + '\n'); // O_APPEND: lines never interleave
+};
+const hhmm = (ts) => {
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime())
+    ? '--:--'
+    : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+if (cmd === 'inbox') {
+  if (rest.length) fail('inbox takes no arguments');
+  const { messages, read } = readInbox();
+  const unread = messages.filter((m) => m.from !== 'agent' && !read.has(String(m.id)));
+  if (!unread.length) {
+    console.log('No new messages.');
+    process.exit(0);
+  }
+  const lines = unread.map((m) => {
+    const re = typeof m.re === 'string' ? ` (answer to ${m.re})` : '';
+    const text = String(m.text).trim().replace(/\r?\n/g, '\n  ');
+    return `- [${hhmm(m.ts)}]${re} ${text}`;
+  });
+  console.log(
+    `${unread.length} new message${unread.length === 1 ? '' : 's'} from the human (instructions; reply with grok-observatory reply "…"):\n` +
+      lines.join('\n'),
+  );
+  if (!opts.peek) {
+    appendInbox({
+      type: 'read',
+      ids: unread.map((m) => String(m.id)),
+      ts: new Date().toISOString(),
+    });
+  }
+  process.exit(0);
+}
+if (cmd === 'reply' || cmd === 'say') {
+  const text = rest.join(' ').replace(/\r\n?/g, '\n').trim();
+  if (!text) fail(`${cmd} needs the message text`);
+  if (text.length > MAX_CHAT_TEXT) fail(`the message is longer than ${MAX_CHAT_TEXT} characters`);
+  if (opts.re !== undefined && !/^[A-Za-z0-9._-]{1,64}$/.test(opts.re))
+    fail('--re must be a question id');
+  const ts = Date.now();
+  const msg = {
+    type: 'message',
+    id: `a-${ts.toString(36)}-${crypto.randomBytes(3).toString('hex')}`,
+    ts: new Date(ts).toISOString(),
+    from: 'agent',
+    text,
+  };
+  if (opts.re) msg.re = opts.re;
+  appendInbox(msg);
+  console.log('Reply posted.');
+  process.exit(0);
+}
 
 /** The current file (plan, questions and any extra fields are kept). */
 function readExisting() {
@@ -99,7 +230,9 @@ function readExisting() {
 const prev = readExisting();
 const status = {};
 // Only the protocol's plan fields carry over; state, message and ttl are set fresh as before.
-for (const k of ['plan', 'step', 'questions']) if (prev[k] != null) status[k] = prev[k];
+for (const k of ['plan', 'step', 'questions', 'protocol_version'])
+  if (prev[k] != null) status[k] = prev[k];
+if (protocolOpt !== undefined) status.protocol_version = protocolOpt;
 let state = ['working', 'done', 'idle'].includes(prev.state) ? prev.state : 'working';
 let message = opts.message;
 
@@ -219,6 +352,11 @@ if (['working', 'done', 'idle'].includes(cmd)) {
   if (left.length === list.length && ref !== 'all') fail(`no open question "${ref}"`);
   if (left.length) status.questions = left;
   else delete status.questions;
+} else if (cmd === 'protocol') {
+  // protocol ack: the agent read the current docs; state and message stay as they were.
+  status.protocol_version = PROTOCOL_VERSION;
+  if (typeof prev.message === 'string' && message === undefined) message = prev.message;
+  console.log(`Recorded protocol v${PROTOCOL_VERSION} for agent ${opts.agent}.`);
 } else {
   fail(`unknown command "${cmd}"`);
 }

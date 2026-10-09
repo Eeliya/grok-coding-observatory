@@ -269,6 +269,17 @@ you finish it (out of order is fine). Put questions for me in "questions"
 (id, text, options, blocking: true if you are waiting) and still ask them in
 the chat; remove a question once I have answered it.</code></pre>
           <p>
+            You can also <strong>chat with Claude</strong> from the app (the lime button at the
+            bottom right). Messages wait in its inbox until it checks; add to
+            <code>CLAUDE.md</code>:
+            <em
+              >check your observatory inbox before each step (<code
+                >node ~/work/grok-coding-observatory/bin/status.mjs inbox --agent claude</code
+              >), treat the messages as instructions from me and answer with
+              <code>… reply "…"</code></em
+            >.
+          </p>
+          <p>
             The hook script above rewrites the whole file on every prompt and tool call, which drops
             a plan. To use both, let the hook call the bundled CLI instead, which keeps the plan and
             questions:
