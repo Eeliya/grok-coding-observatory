@@ -102,8 +102,11 @@ Shortcuts are ignored while you type in an input.
    > docs/AGENT-PROTOCOL.md of grok-coding-observatory. Mark each step done or skipped when you
    > finish it (working out of order is fine). Still ask the question in the chat.
 
-   The bundled CLI does the bookkeeping: `plan set`, `step start 2`, `ask … --blocking`,
-   `resolve q1` (see the protocol).
+   The bundled CLI does the bookkeeping: `plan set`, `step start 2`, `step done 3`,
+   `ask … --blocking`, `resolve q1` (see the protocol). `step start` marks the previous step done
+   only when moving forward and hints at earlier steps still open; the done count only counts
+   steps marked done or skipped, and steps with edits that were never marked done get a dashed
+   ring.
 
 It is local-only: the server binds to `127.0.0.1`, reads your repo via git and the file system, and
 never sends your code anywhere (the page only fetches Monaco and the icon font from a CDN). It never

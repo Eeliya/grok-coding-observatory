@@ -304,6 +304,19 @@ test('CLI: working out of order never ticks steps, but hints at the open ones', 
   as('step', 'skip', '4');
   as('step', 'done', '5');
   assert.equal(as('step', 'start', '6').stderr, '', 'no hint once everything before is marked');
+  // Jumping back never ticks: the step you leave goes back to pending, with a note.
+  const back = as('step', 'start', '2');
+  assert.match(back.stderr, /^Step 6 is back to pending \(not marked done\); run `step done 6`/);
+  assert.deepEqual(
+    (await file()).plan.map((s: any) => s.state),
+    ['done', 'active', 'skipped', 'skipped', 'done', 'pending'],
+  );
+  // Moving forward again finishes the step you were on.
+  assert.equal(as('step', 'start', '6').stderr, '');
+  assert.deepEqual(
+    (await file()).plan.map((s: any) => s.state),
+    ['done', 'done', 'skipped', 'skipped', 'done', 'active'],
+  );
   as('plan', 'clear');
   as('idle');
   await until(() => {

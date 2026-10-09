@@ -469,7 +469,9 @@ npm start -- /path/to/your/repo    # watch that repo right away</code></pre>
               <code>done</code> / <code>skipped</code>), <code>step</code> (the current one) and
               <code>questions</code> (text, options, <code>blocking</code>) add a plan checklist,
               step labels on edits and highlighted questions for you. Agents should mark each step
-              done or skipped when they finish it; working out of order is fine.
+              done or skipped when they finish it; working out of order is fine. The done count only
+              counts marked steps, and a step with edits that was never marked done gets a dashed
+              ring.
             </li>
             <li>
               Write it with plain <code>echo</code> in bash, PowerShell, Node, the bundled CLI

@@ -18,8 +18,9 @@ Plan (optional; shown as a checklist, edits are grouped by the current step):
   plan set "Step one" "Step two" …   replace the plan (all steps pending, ids 1, 2, …)
   plan add "Another step"            append a step
   plan clear                         remove the plan
-  step start <id|n> [note]           make a step current (a previously active step becomes done;
-                                     earlier steps never marked done/skipped are listed as a hint)
+  step start <id|n> [note]           make a step current. Moving forward marks the previously
+                                     active step done; jumping back puts it back to pending.
+                                     Earlier steps never marked done/skipped are listed as a hint
   step done [id|n]                   mark a step done (default: the current one)
   step skip <id|n>                   mark a step skipped
 
@@ -170,7 +171,19 @@ if (['working', 'done', 'idle'].includes(cmd)) {
   if (sub === 'start') {
     if (!ref) fail('step start needs a step id or number');
     const target = findStep(ref);
-    for (const s of steps()) if (s !== target && s.state === 'active') s.state = 'done';
+    // Moving forward finishes the step you were on; jumping back does not (no auto-tick).
+    const list = steps();
+    const at = list.indexOf(target);
+    for (const [i, s] of list.entries()) {
+      if (s === target || s.state !== 'active') continue;
+      if (i < at) s.state = 'done';
+      else {
+        s.state = 'pending';
+        process.stderr.write(
+          `Step ${i + 1} is back to pending (not marked done); run \`step done ${i + 1}\` if it is finished.\n`,
+        );
+      }
+    }
     target.state = 'active';
     hintOpenBefore(target);
     if (note.length) target.note = words(note);

@@ -105,24 +105,35 @@ Three more fields in the same file. Files without them work exactly as before.
 | `questions` | Open questions for the human (max 10). Each: `text` (required, max 500), `id` (default `q1`, `q2`, …), optional `options` (max 8 short strings), `blocking: true` if you are waiting for the answer, `asked_at` (ISO 8601 or epoch; default: `ts`)                 |
 
 - **Keep the plan current** by rewriting the whole file (keep `plan` and `questions` in every
-  write, or they disappear). Starting a step: set it `active`, set `step` to its id, mark the
-  previous one `done`.
-- **Mark each step `done` (or `skipped`) when you finish it.** Working out of order is fine; the
-  observatory never infers that a step is done, so the progress only counts what you marked. A
-  step that has edits but was never marked done shows a dashed ring ("worked on, not marked
-  done") instead of a check.
+  write, or they disappear). Starting a step: set it `active` and set `step` to its id.
+- **Mark each step `done` (or `skipped`) explicitly when you finish it.** Working out of order is
+  fine. The observatory never infers that a step is done: the `N/M done` count and the progress
+  bar only count steps marked `done` or `skipped`.
+- In the checklist, a `pending` step that has edits labelled with it (or a step still marked
+  `active` that is not the current one) shows a **dashed lime ring**: "has edits, but the agent
+  hasn't marked it done". Untouched pending steps stay empty circles.
 - **The human answers in your chat**, not in the observatory. Ask there too; the question card
   just makes sure it is not missed. Once answered, **resolve** it: remove it from `questions` (or
   set `"resolved": true`).
 - Edits are attributed to the current step of the most recently updated **working** agent with a
   plan; after `done` new edits are not attributed to any step.
 
-The CLI below does all of this for you and keeps the plan and questions on every update:
+The CLI below does all of this for you and keeps the plan and questions on every update. How
+`step start` treats the other steps:
+
+- **Moving forward** (the new step comes after the previously active one in the plan): the
+  previously active step is marked `done`.
+- **Jumping back** to an earlier step: the previously active step goes back to `pending` (no
+  auto-tick; a short note says so). Steps already `done` or `skipped` keep their state.
+- It never ticks any other step. If earlier steps are still open (never marked done or skipped),
+  it prints a hint listing them, for example: _Steps 1-2, 4 are still open; mark them with
+  `step done <n>` or `step skip <n>` if finished._ Hints and notes go to stderr; the command
+  still succeeds.
 
 ```bash
 S="node ~/work/grok-coding-observatory/bin/status.mjs --agent grok"   # or: grok-observatory --agent grok
 $S plan set "Read the cart code" "Add discount codes" "Write tests" "Update the README"
-$S step start 1                    # current step (the previous active step becomes done; earlier open steps are listed as a hint)
+$S step start 1                    # current step (forward move: the previous active step becomes done)
 $S step start 2 "DISCOUNTS table"  # optional note
 $S ask "Should discount codes stack with sales?" --option "Yes, apply both" --option "No, best price wins" --blocking   # prints q1
 $S resolve q1                      # after the human answered
