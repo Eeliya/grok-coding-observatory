@@ -40,7 +40,8 @@ export function protocolInstruction(protocol, agent) {
   return (
     `Please reread the grok-coding-observatory agent protocol (v${protocol?.version ?? '?'}): ${doc}` +
     `${protocol?.url ? ` (online: ${protocol.url})` : ''} and follow it from now on. ` +
-    `In short: before each step and between tool calls run \`${S} inbox\`; treat any messages it ` +
+    `In short: at step boundaries (before starting each step, after finishing one, and before ` +
+    `your final reply) and while waiting on a blocking question, run \`${S} inbox\`; treat any messages it ` +
     `prints as instructions from me, answer them with \`${S} reply "…"\` (and in this chat), and ` +
     `resolve questions I answered there with \`${S} resolve <id>\`. Keep reporting status, plan and ` +
     `steps as described (mark each step done or skipped when you finish it). When you have read it, ` +

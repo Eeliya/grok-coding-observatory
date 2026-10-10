@@ -108,11 +108,12 @@ Shortcuts are ignored while you type in an input.
    dir, never in the work tree) and show a **Seen** tick once it has fetched them; its replies
    appear in the same thread. Tell the agent:
 
-   > Check your observatory inbox before each step and between tool calls
-   > (`grok-observatory inbox`), treat the messages as instructions from me, and answer with
+   > Check your observatory inbox at step boundaries (before and after each step, before your
+   > final reply, and while waiting on a blocking question: `grok-observatory inbox`), treat the
+   > messages as instructions from me, and answer with
    > `grok-observatory reply "…"`, as described in docs/AGENT-PROTOCOL.md.
 
-   The protocol is versioned (currently **v2**, see its changelog). Agents record the version they
+   The protocol is versioned (currently **v3**, see its changelog). Agents record the version they
    read (`grok-observatory protocol ack`), and the app warns on the agent chip when one reports an
    older version or none, with a button that copies a "reread the protocol" instruction.
 
@@ -131,14 +132,50 @@ status and chat inbox folders under `.git/observatory/` inside the git dir.
 
 Everything is optional. Set variables in the environment or copy `.env.sample` to `.env`.
 
-| Variable                 | Default                             | Description                                                       |
-| ------------------------ | ----------------------------------- | ----------------------------------------------------------------- |
-| `PORT`                   | `4477`                              | HTTP / WebSocket port                                             |
-| `HOST`                   | `127.0.0.1`                         | Interface to bind (`0.0.0.0` exposes it on your network)          |
-| `TARGET_DIR`             | –                                   | Repo to watch at start (a CLI path wins)                          |
-| `REPOS_ROOT`             | `~/work`                            | Folder scanned (two levels deep) for repos in the picker          |
-| `OBSERVATORY_CONFIG_DIR` | `~/.config/grok-coding-observatory` | Where the last-used and recent repos are stored                   |
-| `WATCH_POLL`             | auto                                | `1` = poll for changes, `0` = native events (auto polls `/mnt/…`) |
+| Variable                    | Default                             | Description                                                           |
+| --------------------------- | ----------------------------------- | --------------------------------------------------------------------- |
+| `PORT`                      | `4477`                              | HTTP / WebSocket port                                                 |
+| `HOST`                      | `127.0.0.1`                         | Interface to bind (`0.0.0.0` exposes it on your network)              |
+| `TARGET_DIR`                | –                                   | Repo to watch at start (a CLI path wins)                              |
+| `REPOS_ROOT`                | `~/work`                            | Folder scanned (two levels deep) for repos in the picker              |
+| `OBSERVATORY_CONFIG_DIR`    | `~/.config/grok-coding-observatory` | Where the last-used and recent repos are stored                       |
+| `WATCH_POLL`                | auto                                | `1` = poll for changes, `0` = native events (auto polls `/mnt/…`)     |
+| `OBSERVATORY_TOKEN`         | –                                   | Require this token (16+ characters) for every request (remote access) |
+| `OBSERVATORY_TOKEN_FILE`    | –                                   | Read the token from this file instead (keep it `chmod 600`)           |
+| `OBSERVATORY_PUBLIC_ORIGIN` | –                                   | Public origin(s), comma-separated, whose pages may post chat messages |
+
+## Remote access with Cloudflare Tunnel
+
+To open the observatory from anywhere (for example when the agent works on a server), keep it
+bound to `127.0.0.1` and put a [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+in front of it (free plan). **Always protect it**: anyone who reaches it can read your code and
+send instructions to your agents.
+
+1. Turn on the token login and tell the observatory its public address:
+
+   ```bash
+   umask 077; openssl rand -base64 32 | tr -d '/+=' > ~/.observatory-token
+   OBSERVATORY_TOKEN_FILE=~/.observatory-token \
+   OBSERVATORY_PUBLIC_ORIGIN=https://agents.example.com \
+   PORT=4480 npm start -- /path/to/repo
+   ```
+
+   Every page, API call and WebSocket then needs the token. Open
+   `https://agents.example.com/?token=…` once (or type it into the sign-in page): it is exchanged
+   for an `HttpOnly`, `Secure`, `SameSite=Lax` cookie (valid 30 days) and removed from the address
+   bar. Scripts can send `Authorization: Bearer …`. Chat messages from the app are accepted from
+   local pages and from `OBSERVATORY_PUBLIC_ORIGIN` (exact `Host` and `Origin` match) only.
+
+2. Create a tunnel (Zero Trust dashboard → Networks → Tunnels, or the API) with a public hostname
+   `agents.example.com` → `http://127.0.0.1:4480`, and run the connector next to the observatory:
+   `cloudflared tunnel run --token <tunnel token>`. Cloudflare adds the proxied DNS record.
+
+3. Optional: put [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/)
+   (free for small teams) in front as well, with an allow policy for your e-mail. The token login
+   still applies behind it.
+
+Agents keep using the CLI on the machine where the code lives; only the browser goes through the
+tunnel.
 
 ## Troubleshooting
 

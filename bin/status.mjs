@@ -39,7 +39,8 @@ Questions for the human (shown prominently until resolved):
   ask "Should codes stack with sales?" [--option Yes --option No] [--blocking] [--id q1]
   resolve <id|all>                   remove an answered question
 
-Chat with the human (messages typed in the observatory wait in your inbox):
+Chat with the human (messages typed in the observatory wait in your inbox; check it before
+and after each step, before your final reply, and while waiting on a blocking question):
   inbox [--peek]                     print only unread messages and mark them read
                                      ("No new messages." when there are none)
   reply "Done, see the diff" [--re q1]   post a reply in the observatory chat (alias: say)

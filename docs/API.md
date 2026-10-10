@@ -25,6 +25,17 @@ Shas must be 4–64 hex characters and resolve to a commit: otherwise 400 (forma
 or not a commit). Merge commits are diffed against their first parent, root commits against the
 empty tree.
 
+### Token login
+
+When `OBSERVATORY_TOKEN` / `OBSERVATORY_TOKEN_FILE` is set (see the README, "Remote access"),
+every request needs the token: the `observatory_session` cookie (set by `GET /any/path?token=…`,
+which redirects without the parameter, or by the form `POST /__login` with `token` and `next`),
+or `Authorization: Bearer <token>`. Without it, pages get a sign-in page and `/api/*` a 401
+`{ error: "login required (token)" }`; WebSocket handshakes are refused with 401. WebSocket
+handshakes from a foreign `Origin` are refused too (local pages and `OBSERVATORY_PUBLIC_ORIGIN`
+are fine). `POST /api/inbox` also accepts the public origin: `Host` must be its host and `Origin`
+exactly that origin.
+
 ## WebSocket `/ws`
 
 Messages are JSON objects with a `type`:

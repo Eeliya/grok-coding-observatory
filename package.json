@@ -10,7 +10,7 @@
     "grok-observatory": "bin/status.mjs"
   },
   "observatory": {
-    "protocolVersion": 2
+    "protocolVersion": 3
   },
   "files": [
     "bin/",

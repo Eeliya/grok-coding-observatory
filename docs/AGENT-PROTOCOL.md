@@ -1,6 +1,6 @@
 # Agent status protocol
 
-`protocol_version: 2` · [Changelog](#changelog) · Write the version you last read into your status
+`protocol_version: 3` · [Changelog](#changelog) · Write the version you last read into your status
 file as `protocol_version` (the CLI: `grok-observatory protocol ack`); the app warns when an agent
 reports an older one or none.
 
@@ -25,8 +25,10 @@ status and check your inbox."_
    Expecting one command to take longer? Set a larger `ttl` before starting it.
 4. **Finished** (or gave up) → `done` with a one-line summary (`"Tests pass, 3 files changed"`).
 5. `idle` = nothing going on (optional; `done` is fine to leave in place).
-6. **Before each step and between tool calls** → check your [inbox](#inbox-chat-with-the-human)
-   (`grok-observatory inbox`); it prints one short line when there is nothing new.
+6. **At step boundaries** → check your [inbox](#inbox-chat-with-the-human)
+   (`grok-observatory inbox`): before starting each step, after finishing one, and before your
+   final reply, plus regularly while you wait on a blocking question. It prints one short line
+   when there is nothing new.
 
 Optional, for tasks with several steps: publish your **plan** when you start, mark the current
 **step** as you go, and put **questions** for the human in the same file (see
@@ -158,7 +160,11 @@ The human writes to you in the app's chat (or answers a question card by clickin
 `<git dir>/observatory/inbox/<agent>.jsonl`, next to the status folder (never in the work tree),
 and you fetch them.
 
-- **Check your inbox before each step and between tool calls:** `grok-observatory inbox`. It
+- **Check your inbox at step boundaries:** before starting each plan step, after finishing one,
+  and before your final reply (without a plan: at the same natural checkpoints, between larger
+  chunks of work). While you wait on a **blocking** question, check it regularly (e.g. every
+  minute or so), since the answer may arrive there. No need to check between individual tool
+  calls. `grok-observatory inbox`. It
   prints **only unread** messages, compactly, and marks them read (the human sees a "Seen" tick);
   with nothing new it prints the single line `No new messages.` Read messages are never printed
   again, so this stays cheap for your context.
@@ -190,7 +196,8 @@ does this for you):
 
 A human message is read once its `id` appears in a `read` line. Messages are at most 4000
 characters. The app writes human messages through `POST /api/inbox`, accepted only from a page
-served by this machine (loopback address, local `Host` and `Origin`).
+served by this machine (loopback address, local `Host` and `Origin`) or, when the observatory is
+reached through a tunnel, from its configured public origin (`OBSERVATORY_PUBLIC_ORIGIN`).
 
 ## Protocol version
 
@@ -201,12 +208,12 @@ CLI keeps it on every write:
 ```bash
 grok-observatory protocol                 # prints the current version and where to read it
 grok-observatory protocol ack --agent grok  # after reading: records protocol_version = current
-grok-observatory working "…" --protocol 2 --agent grok  # or set it explicitly
+grok-observatory working "…" --protocol 3 --agent grok  # or set it explicitly
 ```
 
 The app shows a subtle warning on the agent chip and in its popup when an agent's
-`protocol_version` is missing or older than the current one ("Agent read protocol v1; current is
-v2 — ask it to reread docs/AGENT-PROTOCOL.md"), with a button that copies an instruction for the
+`protocol_version` is missing or older than the current one ("Agent read protocol v2; current is
+v3 — ask it to reread docs/AGENT-PROTOCOL.md"), with a button that copies an instruction for the
 agent's chat.
 
 ## Snippets
@@ -277,6 +284,12 @@ the parsed `plan`, `step` and open `questions`), unreadable files (`problems`) a
 activity `log` (state changes, new current steps and new questions).
 
 ## Changelog
+
+### v3
+
+- **Lighter inbox rule:** check `grok-observatory inbox` at step boundaries (before starting each
+  plan step, after finishing one, and before your final reply) and regularly while waiting on a
+  blocking question, instead of between every tool call.
 
 ### v2
 

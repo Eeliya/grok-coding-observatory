@@ -18,6 +18,7 @@ import {
 } from './status.ts';
 import { InboxWatcher, appendMessage, inboxDir } from './inbox.ts';
 import { PROTOCOL_INFO } from './protocol.ts';
+import { Auth, LOGIN_PATH, authConfigFromEnv, loginPage } from './auth.ts';
 import { REPOS_ROOT, loadState, rememberRepo, resolveRepo, scanRepos } from './repos.ts';
 
 export type { ChangeEvent, ChangedFile, HeadInfo } from './session.ts';
@@ -26,6 +27,14 @@ const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
 const PORT = process.env.PORT === undefined ? 4477 : Number(process.env.PORT);
 const HOST = process.env.HOST || '127.0.0.1';
 const MAX_BODY = 64 * 1024;
+
+let auth: Auth;
+try {
+  auth = new Auth(authConfigFromEnv());
+} catch (err) {
+  console.error(`Cannot start: ${(err as Error).message}`);
+  process.exit(1);
+}
 /** Session timeline caps (in memory; cleared when switching repos). */
 const HISTORY_MAX_ITEMS = 500;
 const HISTORY_MAX_BYTES = 50 * 1024 * 1024;
@@ -242,22 +251,107 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
   return data && typeof data === 'object' ? data : {};
 }
 
-const LOCAL_HOST_RE = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?$/i;
 /**
  * Writes that reach an agent (chat messages are instructions) must come from a page served by
  * this machine: loopback peer, a local Host header (no DNS rebinding) and, when the browser
- * sends one, a local Origin (no cross-site form posts).
+ * sends one, a local Origin (no cross-site form posts). Through a tunnel, the configured public
+ * origin (OBSERVATORY_PUBLIC_ORIGIN) counts as well, with a matching Host and Origin.
  */
 function isLocalRequest(req: http.IncomingMessage) {
-  if (!isLoopback(req.socket.remoteAddress)) return false;
-  if (!LOCAL_HOST_RE.test(String(req.headers.host ?? ''))) return false;
-  const origin = req.headers.origin;
-  if (origin === undefined) return true;
-  try {
-    return LOCAL_HOST_RE.test(new URL(origin).host);
-  } catch {
-    return false;
+  return auth.isTrustedWrite(req, isLoopback(req.socket.remoteAddress));
+}
+
+function sendLogin(
+  res: http.ServerResponse,
+  status: number,
+  opts: { error?: boolean; next?: string },
+) {
+  res.writeHead(status, {
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-store',
+    'content-security-policy':
+      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+    'referrer-policy': 'no-referrer',
+  });
+  res.end(loginPage(opts));
+}
+
+async function readForm(req: http.IncomingMessage) {
+  let size = 0;
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > 4096) throw new Error('Request body too large');
+    chunks.push(chunk);
   }
+  return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
+}
+
+/**
+ * Token login (only when OBSERVATORY_TOKEN / OBSERVATORY_TOKEN_FILE is set). Returns true when
+ * the request was answered here (login page, redirect, 401).
+ */
+async function authGate(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
+  if (!auth.enabled) return false;
+  if (url.pathname === LOGIN_PATH && req.method === 'POST') {
+    const origin = req.headers.origin;
+    if (origin !== undefined && origin !== 'null') {
+      let host = '';
+      try {
+        host = new URL(origin).host;
+      } catch {}
+      if (host !== String(req.headers.host ?? '').toLowerCase()) {
+        res.writeHead(403).end('Cross-site login refused');
+        return true;
+      }
+    }
+    let form: URLSearchParams;
+    try {
+      form = await readForm(req);
+    } catch {
+      res.writeHead(413).end('Too large');
+      return true;
+    }
+    const next = form.get('next') ?? '/';
+    const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/';
+    if (!auth.checkToken(form.get('token'))) {
+      sendLogin(res, 401, { error: true, next: safeNext });
+      return true;
+    }
+    res.writeHead(303, {
+      location: safeNext,
+      'set-cookie': auth.sessionCookie(req),
+      'cache-control': 'no-store',
+    });
+    res.end();
+    return true;
+  }
+  const given = url.searchParams.get('token');
+  if (given !== null && req.method === 'GET') {
+    url.searchParams.delete('token');
+    const next = url.pathname + url.search;
+    if (!auth.checkToken(given)) {
+      sendLogin(res, 401, { error: true, next });
+      return true;
+    }
+    res.writeHead(303, {
+      location: next,
+      'set-cookie': auth.sessionCookie(req),
+      'cache-control': 'no-store',
+      'referrer-policy': 'no-referrer',
+    });
+    res.end();
+    return true;
+  }
+  if (auth.isAuthorized(req)) return false;
+  if (url.pathname.startsWith('/api/')) {
+    sendJson(res, 401, { error: 'login required (token)' });
+  } else if (req.method === 'GET' || req.method === 'HEAD') {
+    sendLogin(res, 401, { next: url.pathname === LOGIN_PATH ? '/' : url.pathname + url.search });
+  } else {
+    res.writeHead(401).end('Login required');
+  }
+  return true;
 }
 
 async function listRepos() {
@@ -278,6 +372,7 @@ async function listRepos() {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   try {
+    if (await authGate(req, res, url)) return;
     if (url.pathname === '/api/files') return sendJson(res, 200, currentInfo());
     if (url.pathname === '/api/history') {
       return sendJson(res, 200, { target: session?.target ?? null, items: history.map(summarize) });
@@ -432,7 +527,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  // Same token as the page, and no cross-site pages reading the stream.
+  verifyClient: ({ req }: { req: http.IncomingMessage }) =>
+    auth.isAuthorized(req) && auth.isAllowedSocketOrigin(req),
+});
 function broadcast(msg: object) {
   const data = JSON.stringify(msg);
   for (const client of wss.clients) if (client.readyState === client.OPEN) client.send(data);
@@ -478,6 +579,14 @@ server.listen(PORT, HOST, () => {
   const { port } = server.address() as AddressInfo;
   const shownHost = HOST === '0.0.0.0' || HOST === '127.0.0.1' ? 'localhost' : HOST;
   console.log(`Open http://${shownHost}:${port}`);
+  if (auth.enabled) console.log('Token login is on (OBSERVATORY_TOKEN).');
+  for (const origin of auth.publicOrigins) console.log(`Public origin: ${origin}`);
+  if (auth.publicOrigins.length && !auth.enabled) {
+    console.warn(
+      'Warning: OBSERVATORY_PUBLIC_ORIGIN is set without OBSERVATORY_TOKEN; anyone who can reach ' +
+        'that address can read your code unless something else (e.g. Cloudflare Access) protects it.',
+    );
+  }
 });
 
 function shutdown() {
