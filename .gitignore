@@ -3,3 +3,6 @@ node_modules/
 npm-debug.log*
 _site/
 demo-out/
+
+# Marketing materials (not tracked)
+marketing/
