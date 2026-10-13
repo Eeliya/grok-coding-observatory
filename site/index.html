@@ -207,8 +207,13 @@
               right grows and the agent status chip goes from working to done.
             </figcaption>
           </figure>
-          <pre class="hero-cmd"><code># in the folder of your repo:
-npx github:Eeliya/grok-coding-observatory   # open http://localhost:4477</code></pre>
+          <pre class="hero-cmd"><code># Quick start (standalone):
+npx github:Eeliya/grok-coding-observatory   # open http://localhost:4477
+
+# Or auto-start with your dev server (recommended):
+npm i -D concurrently
+# Update package.json: "dev": "concurrently \"vite\" \"npx grok-coding-observatory .\""
+npm run dev</code></pre>
           <p class="hero-note">Open source · Local-only · MIT</p>
           <script>
             // Autoplay the (muted) demo unless the visitor prefers reduced motion; the controls can
@@ -386,6 +391,8 @@ npx github:Eeliya/grok-coding-observatory   # open http://localhost:4477</code><
             browser with internet access (Monaco and the icon font load from jsDelivr). The folder
             you watch must be inside a git work tree.
           </p>
+
+          <h3>Run standalone</h3>
           <p>In the folder of the repo your assistant is working in, run:</p>
           <pre><code>npx github:Eeliya/grok-coding-observatory</code></pre>
           <p>
@@ -393,7 +400,31 @@ npx github:Eeliya/grok-coding-observatory   # open http://localhost:4477</code><
             install step. To watch another folder, add its path:
             <code>npx github:Eeliya/grok-coding-observatory /path/to/your/repo</code>.
           </p>
-          <p>Or clone it (handy if you want to hack on it):</p>
+
+          <h3>Auto-start with your dev server (recommended)</h3>
+          <p>For the best experience, run the observatory automatically alongside your dev server:</p>
+          <p><strong>1. Install concurrently:</strong></p>
+          <pre><code>npm install --save-dev concurrently</code></pre>
+          <p><strong>2. Update your package.json:</strong></p>
+          <pre><code>{
+  "scripts": {
+    "dev": "concurrently \"vite\" \"npx grok-coding-observatory .\"",
+    "dev:vite": "vite"
+  }
+}</code></pre>
+          <p>
+            Replace <code>"vite"</code> with your actual dev command (e.g., <code>"next dev"</code>,
+            <code>"npm run start"</code>, etc.)
+          </p>
+          <p><strong>3. Start both together:</strong></p>
+          <pre><code>npm run dev  # Starts your dev server AND the observatory</code></pre>
+          <p>
+            Now every time you start development, the observatory starts automatically at
+            <a href="http://localhost:4477">http://localhost:4477</a>.
+          </p>
+
+          <h3>Clone it</h3>
+          <p>Or clone it if you want to hack on it:</p>
           <pre><code>git clone https://github.com/Eeliya/grok-coding-observatory.git
 cd grok-coding-observatory
 npm install
@@ -434,6 +465,14 @@ npm start -- /path/to/your/repo    # watch that repo right away</code></pre>
       <section id="agent-status" aria-labelledby="agent-title">
         <div class="wrap">
           <h2 id="agent-title">Agent status protocol</h2>
+          <p>
+            <strong>For AI agents:</strong> See
+            <a href="https://github.com/Eeliya/grok-coding-observatory/blob/main/AGENTS.md"
+              >AGENTS.md</a
+            >
+            for complete setup instructions, including how to auto-start the observatory with your
+            dev server.
+          </p>
           <p>
             Let your assistant tell you whether it is <strong>busy or done</strong>, also while it
             only runs lint, tests or git. Tell it:
@@ -596,6 +635,29 @@ npm start -- /path/to/your/repo    # watch that repo right away</code></pre>
                 Another copy is probably running, so just open the URL. Or start on another port
                 with
                 <code>PORT=4478 npm start</code>.
+              </p>
+            </details>
+            <details>
+              <summary><h3>Can it start automatically with my dev server?</h3></summary>
+              <p>
+                Yes! Install <code>concurrently</code> and update your <code>package.json</code> dev
+                script to run both your dev server and the observatory together:
+              </p>
+              <pre><code>npm install --save-dev concurrently
+
+# package.json:
+{
+  "scripts": {
+    "dev": "concurrently \"vite\" \"npx grok-coding-observatory .\""
+  }
+}</code></pre>
+              <p>
+                Now <code>npm run dev</code> starts both. See the
+                <a href="#quick-start">Quick start</a> section or
+                <a href="https://github.com/Eeliya/grok-coding-observatory/blob/main/AGENTS.md"
+                  >AGENTS.md</a
+                >
+                for details.
               </p>
             </details>
             <details>

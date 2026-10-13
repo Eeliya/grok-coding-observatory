@@ -19,6 +19,8 @@ the file system.
 
 ## Quick start
 
+### Run it standalone
+
 In the folder of the repo your assistant is working in, run:
 
 ```bash
@@ -41,6 +43,41 @@ npm start -- /path/to/your/repo    # watch that repo right away
 ```
 
 With `npm start` the last repo you watched is remembered for the next start.
+
+### Auto-start with your dev server (recommended)
+
+For the best experience, run the observatory automatically alongside your dev server:
+
+**1. Install concurrently:**
+```bash
+npm install --save-dev concurrently
+```
+
+**2. Update your `package.json`:**
+```json
+{
+  "scripts": {
+    "dev": "concurrently \"vite\" \"npx grok-coding-observatory .\"",
+    "dev:vite": "vite"
+  }
+}
+```
+
+Replace `"vite"` with your actual dev command (e.g., `"next dev"`, `"npm run start"`, etc.)
+
+**3. Start both together:**
+```bash
+npm run dev  # Starts your dev server AND the observatory
+```
+
+Now every time you start development, the observatory starts automatically. Open
+**<http://localhost:4477>** to watch changes live.
+
+**For other frameworks:**
+- **Next.js:** `"concurrently \"next dev\" \"npx grok-coding-observatory .\""`
+- **Express:** `"concurrently \"nodemon server.js\" \"npx grok-coding-observatory .\""`
+- **Create React App:** `"concurrently \"react-scripts start\" \"npx grok-coding-observatory .\""`
+- **Any project:** `"concurrently \"your-dev-command\" \"npx grok-coding-observatory .\""`
 
 - **macOS / Linux:** run the commands in a terminal and open the URL in any browser.
 - **Windows:** run it **inside WSL** (Ubuntu etc.), next to your repos, and open
@@ -76,9 +113,15 @@ With `npm start` the last repo you watched is remembered for the next start.
 
 Shortcuts are ignored while you type in an input.
 
-## Using it with Grok Bot
+## Using it with AI agents
+
+**For AI agents:** See **[AGENTS.md](AGENTS.md)** for setup instructions, including how to auto-start
+the observatory with your dev server and report your status.
+
+**For developers working with Grok Bot or other agents:**
 
 1. Start the observatory where your repos live (on Windows: in WSL) and open <http://localhost:4477>.
+   Or better: set it up to [auto-start with your dev server](#auto-start-with-your-dev-server-recommended).
 2. Pick the repo your assistant is editing (click the repo name in the header, or start it with
    `npx github:Eeliya/grok-coding-observatory ~/work/my-project`).
 3. Keep the tab open beside the chat. Each edit replays as it lands; when you come back, the dots
