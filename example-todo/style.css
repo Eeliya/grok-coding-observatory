@@ -1,0 +1,253 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: #0d1117;
+  color: #c9d1d9;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.container {
+  width: 100%;
+  max-width: 600px;
+  background: #161b22;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+header {
+  background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+  padding: 32px 24px;
+  text-align: center;
+  border-bottom: 2px solid #21262d;
+}
+
+h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #e6edf3;
+  letter-spacing: -0.5px;
+}
+
+.add-todo {
+  display: flex;
+  gap: 12px;
+  padding: 24px;
+  border-bottom: 1px solid #21262d;
+}
+
+#todoInput {
+  flex: 1;
+  background: #0d1117;
+  border: 2px solid #30363d;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 16px;
+  color: #e6edf3;
+  transition: all 0.2s;
+}
+
+#todoInput:focus {
+  outline: none;
+  border-color: #c9f31d;
+  box-shadow: 0 0 0 3px rgba(201, 243, 29, 0.1);
+}
+
+#todoInput::placeholder {
+  color: #6e7681;
+}
+
+#addBtn {
+  background: #c9f31d;
+  color: #0d1117;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+#addBtn:hover {
+  background: #deff4e;
+  transform: translateY(-1px);
+}
+
+#addBtn:active {
+  transform: translateY(0);
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  padding: 16px 24px;
+  border-bottom: 1px solid #21262d;
+}
+
+.filter {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter:hover {
+  border-color: #c9f31d;
+  color: #e6edf3;
+}
+
+.filter.active {
+  background: #c9f31d;
+  border-color: #c9f31d;
+  color: #0d1117;
+}
+
+.todo-list {
+  list-style: none;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.todo-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.todo-list::-webkit-scrollbar-track {
+  background: #161b22;
+}
+
+.todo-list::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+
+.todo-list::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid #21262d;
+  transition: background 0.2s;
+}
+
+.todo-item:hover {
+  background: #0d1117;
+}
+
+.todo-item.completed {
+  opacity: 0.6;
+}
+
+.todo-item.completed .todo-text {
+  text-decoration: line-through;
+  color: #6e7681;
+}
+
+.todo-checkbox {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #30363d;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.todo-checkbox:hover {
+  border-color: #c9f31d;
+}
+
+.todo-checkbox.checked {
+  background: #c9f31d;
+  border-color: #c9f31d;
+  position: relative;
+}
+
+.todo-checkbox.checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #0d1117;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.todo-text {
+  flex: 1;
+  font-size: 16px;
+  color: #e6edf3;
+}
+
+.delete-btn {
+  background: transparent;
+  border: none;
+  color: #6e7681;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  opacity: 0;
+}
+
+.todo-item:hover .delete-btn {
+  opacity: 1;
+}
+
+.delete-btn:hover {
+  color: #f85149;
+  background: rgba(248, 81, 73, 0.1);
+}
+
+.stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  font-size: 14px;
+  color: #8b949e;
+}
+
+#clearCompleted {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+#clearCompleted:hover {
+  border-color: #f85149;
+  color: #f85149;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: #6e7681;
+  font-size: 16px;
+}
